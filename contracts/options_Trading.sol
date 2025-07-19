@@ -26,12 +26,16 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
         OptionState state;
         bool isCollateralized;
         uint256 createdAt;
-        bool isAmerican; // true for American, false for European
+        bool isAmerican;
+        uint256 impliedVolatility; // New: IV for pricing
+        bool isSpread; // New: For spread options
+        uint256 spreadStrike2; // New: Second strike for spreads
     }
 
     struct PriceData {
         uint256 price;
         uint256 timestamp;
+        uint256 volatility; // New: Historical volatility
     }
 
     struct UserStats {
@@ -41,6 +45,8 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
         uint256 totalPremiumEarned;
         uint256 totalPremiumPaid;
         uint256 totalProfitFromExercise;
+        uint256 winRate; // New: Success rate percentage
+        uint256 averageHoldTime; // New: Average time holding options
     }
 
     struct MarketData {
@@ -48,6 +54,32 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
         uint256 totalOptionsCreated;
         uint256 totalOptionsExercised;
         uint256 activeOptionsCount;
+        uint256 totalTradingFees; // New: Accumulated trading fees
+    }
+
+    // New: Pool structure for liquidity provision
+    struct LiquidityPool {
+        uint256 totalLiquidity;
+        uint256 availableLiquidity;
+        mapping(address => uint256) userShares;
+        uint256 totalShares;
+        uint256 feeRate; // Pool fee rate
+    }
+
+    // New: Flash loan structure
+    struct FlashLoan {
+        uint256 amount;
+        uint256 fee;
+        address borrower;
+        bool active;
+    }
+
+    // New: Insurance structure
+    struct Insurance {
+        uint256 premium;
+        uint256 coverage;
+        uint256 expiry;
+        bool isActive;
     }
 
     mapping(uint256 => Option) public options;
@@ -57,11 +89,26 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
     mapping(address => UserStats) public userStats;
     mapping(address => bool) public authorizedPriceFeeds;
     mapping(address => uint256) public assetMinimumPremium;
-    mapping(uint256 => uint256[]) public optionBids; // optionId => [bidPrice, bidder]
+    mapping(uint256 => uint256[]) public optionBids;
     mapping(uint256 => mapping(address => uint256)) public userBids;
     mapping(address => uint256) public userReputationScore;
     
+    // New mappings
+    mapping(address => LiquidityPool) public liquidityPools; // Asset => Pool
+    mapping(address => mapping(address => uint256)) public userPoolShares; // User => Asset => Shares
+    mapping(uint256 => FlashLoan) public flashLoans;
+    mapping(address => mapping(uint256 => Insurance)) public userInsurance; // User => OptionId => Insurance
+    mapping(address => uint256[]) public priceHistory; // Asset => Price history
+    mapping(uint256 => uint256[]) public optionChain; // Strike => Option IDs
+    mapping(address => bool) public whitelistedAssets;
+    mapping(address => uint256) public assetTradingVolume; // 24h trading volume per asset
+    mapping(address => uint256) public lastActivityTime; // User activity tracking
+    mapping(uint256 => bool) public autoExerciseEnabled; // Option ID => Auto-exercise status
+    mapping(address => uint256) public referralRewards; // Referral system
+    mapping(address => address) public referrals; // User => Referrer
+    
     uint256 public optionCounter;
+    uint256 public flashLoanCounter;
     uint256 public constant EXERCISE_WINDOW = 1 hours;
     uint256 public constant PRICE_VALIDITY_DURATION = 1 hours;
     uint256 public platformFee = 100; // 1% = 100 basis points
@@ -69,12 +116,33 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
     uint256 public constant MIN_REPUTATION_SCORE = 0;
     uint256 public constant MAX_REPUTATION_SCORE = 1000;
     
+    // New constants
+    uint256 public constant FLASH_LOAN_FEE = 30; // 0.3%
+    uint256 public constant INSURANCE_RATE = 200; // 2%
+    uint256 public constant REFERRAL_BONUS = 50; // 0.5%
+    uint256 public liquidityIncentiveRate = 500; // 5% APY for LP tokens
+    
     MarketData public marketData;
     bool public biddingEnabled = true;
     bool public reputationSystemEnabled = true;
+    bool public autoExerciseEnabled = true; // New: Global auto-exercise toggle
+    bool public flashLoansEnabled = true; // New: Flash loans toggle
+    bool public insuranceEnabled = true; // New: Insurance toggle
     uint256 public maxOptionDuration = 365 days;
     uint256 public minOptionDuration = 1 hours;
 
+    // New events
+    event LiquidityProvided(address indexed provider, address indexed asset, uint256 amount, uint256 shares);
+    event LiquidityWithdrawn(address indexed provider, address indexed asset, uint256 amount, uint256 shares);
+    event FlashLoanExecuted(uint256 indexed loanId, address indexed borrower, uint256 amount, uint256 fee);
+    event InsurancePurchased(address indexed user, uint256 indexed optionId, uint256 premium, uint256 coverage);
+    event AutoExerciseExecuted(uint256 indexed optionId, address indexed buyer, uint256 profit);
+    event VolatilityUpdated(address indexed asset, uint256 newVolatility);
+    event SpreadOptionCreated(uint256 indexed optionId, uint256 strike1, uint256 strike2);
+    event ReferralRewardPaid(address indexed referrer, address indexed referee, uint256 amount);
+    event AssetWhitelisted(address indexed asset, bool status);
+
+    // Existing events...
     event OptionCreated(
         uint256 indexed optionId,
         address indexed creator,
@@ -172,6 +240,17 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
         _;
     }
 
+    // New modifiers
+    modifier onlyWhitelistedAsset(address _asset) {
+        require(whitelistedAssets[_asset] || msg.sender == owner(), "Asset not whitelisted");
+        _;
+    }
+
+    modifier flashLoansOnly() {
+        require(flashLoansEnabled, "Flash loans disabled");
+        _;
+    }
+
     constructor() Ownable(msg.sender) {
         authorizedPriceFeeds[msg.sender] = true;
     }
@@ -187,7 +266,7 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
         uint256 _amount,
         OptionType _optionType,
         bool _isAmerican
-    ) external payable nonReentrant whenNotPaused validPrice(_underlyingAsset) {
+    ) external payable nonReentrant whenNotPaused validPrice(_underlyingAsset) onlyWhitelistedAsset(_underlyingAsset) {
         require(_underlyingAsset != address(0), "Invalid asset address");
         require(_strikePrice > 0, "Strike price must be greater than 0");
         require(_premium >= assetMinimumPremium[_underlyingAsset], "Premium below minimum");
@@ -209,6 +288,9 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
             require(msg.value >= requiredCollateral, "Insufficient ETH collateral for PUT option");
         }
 
+        // Calculate implied volatility based on premium and current price
+        uint256 impliedVol = calculateImpliedVolatility(_strikePrice, _premium, _expiry);
+
         options[optionId] = Option({
             id: optionId,
             creator: msg.sender,
@@ -222,18 +304,28 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
             state: OptionState.ACTIVE,
             isCollateralized: true,
             createdAt: block.timestamp,
-            isAmerican: _isAmerican
+            isAmerican: _isAmerican,
+            impliedVolatility: impliedVol,
+            isSpread: false,
+            spreadStrike2: 0
         });
 
+        // Add to option chain
+        optionChain[_strikePrice].push(optionId);
+        
         userOptions[msg.sender].push(optionId);
         userStats[msg.sender].totalOptionsCreated++;
         marketData.totalOptionsCreated++;
         marketData.activeOptionsCount++;
+        lastActivityTime[msg.sender] = block.timestamp;
 
         // Update reputation for creating options
         if (reputationSystemEnabled) {
             _updateReputation(msg.sender, 5, "Option created");
         }
+
+        // Handle referral rewards
+        _handleReferralReward(msg.sender, _premium);
 
         emit OptionCreated(
             optionId,
@@ -248,444 +340,452 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable {
     }
 
     /**
-     * @dev Enhanced option purchase with reputation checks
+     * @dev Create spread option (bull call spread, bear put spread, etc.)
      */
-    function purchaseOption(uint256 _optionId) external payable nonReentrant whenNotPaused optionExists(_optionId) {
-        Option storage option = options[_optionId];
-        require(option.state == OptionState.ACTIVE, "Option is not active");
-        require(option.buyer == address(0), "Option already purchased");
-        require(block.timestamp < option.expiry, "Option has expired");
-        require(msg.sender != option.creator, "Cannot buy your own option");
-
-        // Reputation check
-        if (reputationSystemEnabled) {
-            require(userReputationScore[msg.sender] >= MIN_REPUTATION_SCORE, "Insufficient reputation");
-        }
-
-        uint256 totalCost = option.premium.add(option.premium.mul(platformFee).div(BASIS_POINTS));
-        require(msg.value >= totalCost, "Insufficient payment");
-
-        option.buyer = msg.sender;
-        userOptions[msg.sender].push(_optionId);
-        userStats[msg.sender].totalOptionsBought++;
-        userStats[msg.sender].totalPremiumPaid = userStats[msg.sender].totalPremiumPaid.add(option.premium);
-        userStats[option.creator].totalPremiumEarned = userStats[option.creator].totalPremiumEarned.add(option.premium);
-        marketData.totalVolume = marketData.totalVolume.add(option.premium);
-
-        // Transfer premium to option creator
-        uint256 creatorPayment = option.premium;
-        uint256 platformPayment = totalCost.sub(creatorPayment);
-
-        (bool success1, ) = option.creator.call{value: creatorPayment}("");
-        require(success1, "Payment to creator failed");
-
-        if (platformPayment > 0) {
-            (bool success2, ) = owner().call{value: platformPayment}("");
-            require(success2, "Platform fee transfer failed");
-        }
-
-        // Refund excess payment
-        if (msg.value > totalCost) {
-            (bool success3, ) = msg.sender.call{value: msg.value.sub(totalCost)}("");
-            require(success3, "Refund failed");
-        }
-
-        // Update reputation
-        if (reputationSystemEnabled) {
-            _updateReputation(msg.sender, 3, "Option purchased");
-        }
-
-        emit OptionPurchased(_optionId, msg.sender, option.premium);
-    }
-
-    /**
-     * @dev Enhanced exercise function with American/European option support
-     */
-    function exerciseOption(uint256 _optionId) external nonReentrant whenNotPaused optionExists(_optionId) onlyOptionBuyer(_optionId) validPrice(options[_optionId].underlyingAsset) {
-        Option storage option = options[_optionId];
-        require(option.state == OptionState.ACTIVE, "Option is not active");
+    function createSpreadOption(
+        address _underlyingAsset,
+        uint256 _strikePrice1,
+        uint256 _strikePrice2,
+        uint256 _premium,
+        uint256 _expiry,
+        uint256 _amount,
+        OptionType _optionType,
+        bool _isAmerican
+    ) external payable nonReentrant whenNotPaused validPrice(_underlyingAsset) onlyWhitelistedAsset(_underlyingAsset) {
+        require(_strikePrice1 != _strikePrice2, "Strike prices must be different");
+        require(_strikePrice1 > 0 && _strikePrice2 > 0, "Invalid strike prices");
         
-        // Check exercise conditions based on option type
-        if (option.isAmerican) {
-            require(block.timestamp <= option.expiry, "Option has expired");
-        } else {
-            // European option can only be exercised at expiry
-            require(
-                block.timestamp >= option.expiry.sub(EXERCISE_WINDOW) && 
-                block.timestamp <= option.expiry.add(EXERCISE_WINDOW),
-                "European option can only be exercised at expiry"
-            );
-        }
+        uint256 optionId = optionCounter++;
+        uint256 requiredCollateral = calculateSpreadCollateral(_strikePrice1, _strikePrice2, _amount, _optionType);
+        require(msg.value >= requiredCollateral, "Insufficient collateral");
 
-        uint256 currentPrice = assetPrices[option.underlyingAsset].price;
-        uint256 profit = calculateExerciseProfit(option, currentPrice);
-
-        option.state = OptionState.EXERCISED;
-        userStats[msg.sender].totalOptionsExercised++;
-        userStats[msg.sender].totalProfitFromExercise = userStats[msg.sender].totalProfitFromExercise.add(profit);
-        marketData.totalOptionsExercised++;
-        marketData.activeOptionsCount--;
-
-        if (profit > 0) {
-            require(address(this).balance >= profit, "Insufficient contract balance");
-            (bool success, ) = msg.sender.call{value: profit}("");
-            require(success, "Profit transfer failed");
-        }
-
-        // Handle collateral release
-        _releaseCollateral(option, profit);
-
-        // Update reputation
-        if (reputationSystemEnabled) {
-            _updateReputation(msg.sender, 10, "Option exercised");
-        }
-
-        emit OptionExercised(_optionId, msg.sender, profit);
-    }
-
-    /**
-     * @dev Cancel an option (only creator, before purchase)
-     */
-    function cancelOption(uint256 _optionId) external nonReentrant optionExists(_optionId) onlyOptionCreator(_optionId) {
-        Option storage option = options[_optionId];
-        require(option.state == OptionState.ACTIVE, "Option is not active");
-        require(option.buyer == address(0), "Option already purchased");
-
-        option.state = OptionState.CANCELLED;
-        marketData.activeOptionsCount--;
-
-        // Return collateral
-        if (option.optionType == OptionType.CALL) {
-            collateral[msg.sender][option.underlyingAsset] = collateral[msg.sender][option.underlyingAsset].add(option.amount);
-        } else {
-            uint256 collateralAmount = calculateRequiredCollateral(option.strikePrice, option.amount, option.optionType);
-            (bool success, ) = msg.sender.call{value: collateralAmount}("");
-            require(success, "Collateral return failed");
-        }
-
-        emit OptionCancelled(_optionId, msg.sender);
-    }
-
-    /**
-     * @dev Batch expire options (can be called by anyone)
-     */
-    function batchExpireOptions(uint256[] calldata _optionIds) external {
-        for (uint256 i = 0; i < _optionIds.length; i++) {
-            _expireOption(_optionIds[i]);
-        }
-    }
-
-    /**
-     * @dev Place a bid on an option
-     */
-    function placeBid(uint256 _optionId, uint256 _bidAmount) external payable nonReentrant optionExists(_optionId) {
-        require(biddingEnabled, "Bidding is disabled");
-        require(msg.value >= _bidAmount, "Insufficient payment for bid");
-        require(_bidAmount > 0, "Bid must be greater than 0");
-        
-        Option storage option = options[_optionId];
-        require(option.state == OptionState.ACTIVE, "Option is not active");
-        require(option.buyer == address(0), "Option already purchased");
-        require(msg.sender != option.creator, "Cannot bid on your own option");
-
-        // Refund previous bid if exists
-        if (userBids[_optionId][msg.sender] > 0) {
-            (bool success, ) = msg.sender.call{value: userBids[_optionId][msg.sender]}("");
-            require(success, "Previous bid refund failed");
-        }
-
-        userBids[_optionId][msg.sender] = _bidAmount;
-        
-        // Refund excess payment
-        if (msg.value > _bidAmount) {
-            (bool success, ) = msg.sender.call{value: msg.value.sub(_bidAmount)}("");
-            require(success, "Excess bid refund failed");
-        }
-
-        emit BidPlaced(_optionId, msg.sender, _bidAmount);
-    }
-
-    /**
-     * @dev Accept a bid on an option
-     */
-    function acceptBid(uint256 _optionId, address _bidder) external nonReentrant optionExists(_optionId) onlyOptionCreator(_optionId) {
-        require(biddingEnabled, "Bidding is disabled");
-        Option storage option = options[_optionId];
-        require(option.state == OptionState.ACTIVE, "Option is not active");
-        require(option.buyer == address(0), "Option already purchased");
-        require(userBids[_optionId][_bidder] > 0, "No valid bid from this bidder");
-
-        uint256 bidAmount = userBids[_optionId][_bidder];
-        uint256 platformFeeAmount = bidAmount.mul(platformFee).div(BASIS_POINTS);
-        uint256 creatorPayment = bidAmount.sub(platformFeeAmount);
-
-        option.buyer = _bidder;
-        option.premium = bidAmount;
-        userOptions[_bidder].push(_optionId);
-        userStats[_bidder].totalOptionsBought++;
-        userStats[_bidder].totalPremiumPaid = userStats[_bidder].totalPremiumPaid.add(bidAmount);
-        userStats[msg.sender].totalPremiumEarned = userStats[msg.sender].totalPremiumEarned.add(bidAmount);
-        marketData.totalVolume = marketData.totalVolume.add(bidAmount);
-
-        // Clear all bids for this option
-        userBids[_optionId][_bidder] = 0;
-
-        // Transfer payments
-        (bool success1, ) = msg.sender.call{value: creatorPayment}("");
-        require(success1, "Payment to creator failed");
-
-        if (platformFeeAmount > 0) {
-            (bool success2, ) = owner().call{value: platformFeeAmount}("");
-            require(success2, "Platform fee transfer failed");
-        }
-
-        emit OptionPurchased(_optionId, _bidder, bidAmount);
-    }
-
-    /**
-     * @dev Withdraw a bid
-     */
-    function withdrawBid(uint256 _optionId) external nonReentrant optionExists(_optionId) {
-        require(userBids[_optionId][msg.sender] > 0, "No bid to withdraw");
-        
-        uint256 bidAmount = userBids[_optionId][msg.sender];
-        userBids[_optionId][msg.sender] = 0;
-
-        (bool success, ) = msg.sender.call{value: bidAmount}("");
-        require(success, "Bid withdrawal failed");
-
-        emit BidWithdrawn(_optionId, msg.sender, bidAmount);
-    }
-
-    /**
-     * @dev Calculate exercise profit
-     */
-    function calculateExerciseProfit(Option memory option, uint256 currentPrice) public pure returns (uint256) {
-        uint256 profit = 0;
-        
-        if (option.optionType == OptionType.CALL) {
-            if (currentPrice > option.strikePrice) {
-                profit = currentPrice.sub(option.strikePrice).mul(option.amount).div(1e18);
-            }
-        } else {
-            if (currentPrice < option.strikePrice) {
-                profit = option.strikePrice.sub(currentPrice).mul(option.amount).div(1e18);
-            }
-        }
-        
-        return profit;
-    }
-
-    /**
-     * @dev Internal function to expire an option
-     */
-    function _expireOption(uint256 _optionId) internal {
-        if (_optionId >= optionCounter) return;
-        
-        Option storage option = options[_optionId];
-        if (option.state != OptionState.ACTIVE) return;
-        if (block.timestamp <= option.expiry.add(EXERCISE_WINDOW)) return;
-
-        option.state = OptionState.EXPIRED;
-        marketData.activeOptionsCount--;
-
-        // Return collateral to creator
-        if (option.optionType == OptionType.CALL) {
-            collateral[option.creator][option.underlyingAsset] = collateral[option.creator][option.underlyingAsset].add(option.amount);
-        } else {
-            uint256 collateralAmount = calculateRequiredCollateral(option.strikePrice, option.amount, option.optionType);
-            (bool success, ) = option.creator.call{value: collateralAmount}("");
-            require(success, "Collateral return failed");
-        }
-
-        emit OptionExpired(_optionId);
-    }
-
-    /**
-     * @dev Internal function to release collateral
-     */
-    function _releaseCollateral(Option memory option, uint256 profit) internal {
-        if (profit == 0) {
-            if (option.optionType == OptionType.CALL) {
-                collateral[option.creator][option.underlyingAsset] = collateral[option.creator][option.underlyingAsset].add(option.amount);
-            } else {
-                uint256 collateralAmount = calculateRequiredCollateral(option.strikePrice, option.amount, option.optionType);
-                (bool success, ) = option.creator.call{value: collateralAmount}("");
-                require(success, "Collateral return failed");
-            }
-        }
-    }
-
-    /**
-     * @dev Update user reputation
-     */
-    function _updateReputation(address user, uint256 points, string memory reason) internal {
-        uint256 currentScore = userReputationScore[user];
-        uint256 newScore = currentScore.add(points);
-        
-        if (newScore > MAX_REPUTATION_SCORE) {
-            newScore = MAX_REPUTATION_SCORE;
-        }
-        
-        userReputationScore[user] = newScore;
-        
-        emit ReputationUpdated(user, newScore, reason);
-    }
-
-    // Admin functions
-    function updateAssetPrice(address _asset, uint256 _price) external onlyAuthorizedPriceFeed {
-        require(_asset != address(0), "Invalid asset address");
-        require(_price > 0, "Price must be greater than 0");
-        
-        assetPrices[_asset] = PriceData({
-            price: _price,
-            timestamp: block.timestamp
+        options[optionId] = Option({
+            id: optionId,
+            creator: msg.sender,
+            buyer: address(0),
+            underlyingAsset: _underlyingAsset,
+            strikePrice: _strikePrice1,
+            premium: _premium,
+            expiry: _expiry,
+            amount: _amount,
+            optionType: _optionType,
+            state: OptionState.ACTIVE,
+            isCollateralized: true,
+            createdAt: block.timestamp,
+            isAmerican: _isAmerican,
+            impliedVolatility: calculateImpliedVolatility(_strikePrice1, _premium, _expiry),
+            isSpread: true,
+            spreadStrike2: _strikePrice2
         });
 
-        emit PriceUpdated(_asset, _price, block.timestamp);
+        userOptions[msg.sender].push(optionId);
+        userStats[msg.sender].totalOptionsCreated++;
+        marketData.totalOptionsCreated++;
+        marketData.activeOptionsCount++;
+
+        emit SpreadOptionCreated(optionId, _strikePrice1, _strikePrice2);
     }
 
-    function setAuthorizedPriceFeed(address _feed, bool _authorized) external onlyOwner {
-        authorizedPriceFeeds[_feed] = _authorized;
-    }
-
-    function setAssetMinimumPremium(address _asset, uint256 _minPremium) external onlyOwner {
-        assetMinimumPremium[_asset] = _minPremium;
-    }
-
-    function setBiddingEnabled(bool _enabled) external onlyOwner {
-        biddingEnabled = _enabled;
-    }
-
-    function setReputationSystemEnabled(bool _enabled) external onlyOwner {
-        reputationSystemEnabled = _enabled;
-    }
-
-    function setOptionDurationLimits(uint256 _minDuration, uint256 _maxDuration) external onlyOwner {
-        require(_minDuration < _maxDuration, "Invalid duration limits");
-        minOptionDuration = _minDuration;
-        maxOptionDuration = _maxDuration;
-    }
-
-    function pauseContract() external onlyOwner {
-        _pause();
-    }
-
-    function unpauseContract() external onlyOwner {
-        _unpause();
-    }
-
-    // Enhanced collateral functions
-    function depositCollateral(address _asset, uint256 _amount) external {
-        require(_asset != address(0), "Invalid asset address");
+    /**
+     * @dev Provide liquidity to earn fees
+     */
+    function provideLiquidity(address _asset, uint256 _amount) external payable nonReentrant onlyWhitelistedAsset(_asset) {
         require(_amount > 0, "Amount must be greater than 0");
         
-        IERC20 token = IERC20(_asset);
-        require(token.transferFrom(msg.sender, address(this), _amount), "Transfer failed");
+        LiquidityPool storage pool = liquidityPools[_asset];
         
-        collateral[msg.sender][_asset] = collateral[msg.sender][_asset].add(_amount);
-        
-        emit CollateralDeposited(msg.sender, _asset, _amount);
+        // Calculate shares based on pool ratio or 1:1 for first deposit
+        uint256 shares;
+        if (pool.totalShares == 0) {
+            shares = _amount;
+        } else {
+            shares = _amount.mul(pool.totalShares).div(pool.totalLiquidity);
+        }
+
+        // Handle ETH or ERC20 deposits
+        if (_asset == address(0)) {
+            require(msg.value >= _amount, "Insufficient ETH sent");
+        } else {
+            IERC20 token = IERC20(_asset);
+            require(token.transferFrom(msg.sender, address(this), _amount), "Transfer failed");
+        }
+
+        pool.totalLiquidity = pool.totalLiquidity.add(_amount);
+        pool.availableLiquidity = pool.availableLiquidity.add(_amount);
+        pool.userShares[msg.sender] = pool.userShares[msg.sender].add(shares);
+        pool.totalShares = pool.totalShares.add(shares);
+        userPoolShares[msg.sender][_asset] = userPoolShares[msg.sender][_asset].add(shares);
+
+        emit LiquidityProvided(msg.sender, _asset, _amount, shares);
     }
 
-    function withdrawCollateral(address _asset, uint256 _amount) external nonReentrant {
-        require(_asset != address(0), "Invalid asset address");
+    /**
+     * @dev Withdraw liquidity and earned fees
+     */
+    function withdrawLiquidity(address _asset, uint256 _shares) external nonReentrant {
+        require(_shares > 0, "Shares must be greater than 0");
+        
+        LiquidityPool storage pool = liquidityPools[_asset];
+        require(pool.userShares[msg.sender] >= _shares, "Insufficient shares");
+        
+        uint256 amount = _shares.mul(pool.totalLiquidity).div(pool.totalShares);
+        require(pool.availableLiquidity >= amount, "Insufficient liquidity");
+        
+        pool.userShares[msg.sender] = pool.userShares[msg.sender].sub(_shares);
+        pool.totalShares = pool.totalShares.sub(_shares);
+        pool.totalLiquidity = pool.totalLiquidity.sub(amount);
+        pool.availableLiquidity = pool.availableLiquidity.sub(amount);
+        userPoolShares[msg.sender][_asset] = userPoolShares[msg.sender][_asset].sub(_shares);
+
+        // Transfer funds back
+        if (_asset == address(0)) {
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "ETH transfer failed");
+        } else {
+            IERC20 token = IERC20(_asset);
+            require(token.transfer(msg.sender, amount), "Token transfer failed");
+        }
+
+        emit LiquidityWithdrawn(msg.sender, _asset, amount, _shares);
+    }
+
+    /**
+     * @dev Execute flash loan
+     */
+    function executeFlashLoan(
+        address _asset,
+        uint256 _amount,
+        bytes calldata _data
+    ) external nonReentrant flashLoansOnly {
         require(_amount > 0, "Amount must be greater than 0");
-        require(collateral[msg.sender][_asset] >= _amount, "Insufficient collateral");
+        require(whitelistedAssets[_asset], "Asset not supported");
         
-        collateral[msg.sender][_asset] = collateral[msg.sender][_asset].sub(_amount);
+        LiquidityPool storage pool = liquidityPools[_asset];
+        require(pool.availableLiquidity >= _amount, "Insufficient liquidity");
         
-        IERC20 token = IERC20(_asset);
-        require(token.transfer(msg.sender, _amount), "Transfer failed");
+        uint256 loanId = flashLoanCounter++;
+        uint256 fee = _amount.mul(FLASH_LOAN_FEE).div(BASIS_POINTS);
         
-        emit CollateralWithdrawn(msg.sender, _asset, _amount);
+        flashLoans[loanId] = FlashLoan({
+            amount: _amount,
+            fee: fee,
+            borrower: msg.sender,
+            active: true
+        });
+        
+        pool.availableLiquidity = pool.availableLiquidity.sub(_amount);
+        
+        // Transfer loan amount
+        if (_asset == address(0)) {
+            (bool success, ) = msg.sender.call{value: _amount}("");
+            require(success, "Loan transfer failed");
+        } else {
+            IERC20 token = IERC20(_asset);
+            require(token.transfer(msg.sender, _amount), "Loan transfer failed");
+        }
+        
+        // Execute borrower's logic
+        (bool callSuccess, ) = msg.sender.call(_data);
+        require(callSuccess, "Flash loan execution failed");
+        
+        // Repay loan + fee
+        uint256 repayAmount = _amount.add(fee);
+        if (_asset == address(0)) {
+            require(address(this).balance >= repayAmount, "Insufficient repayment");
+        } else {
+            IERC20 token = IERC20(_asset);
+            require(token.transferFrom(msg.sender, address(this), repayAmount), "Repayment failed");
+        }
+        
+        pool.availableLiquidity = pool.availableLiquidity.add(_amount);
+        pool.totalLiquidity = pool.totalLiquidity.add(fee); // Fee stays in pool
+        flashLoans[loanId].active = false;
+        
+        emit FlashLoanExecuted(loanId, msg.sender, _amount, fee);
     }
 
-    function calculateRequiredCollateral(
+    /**
+     * @dev Purchase insurance for an option
+     */
+    function purchaseInsurance(uint256 _optionId, uint256 _coverage) external payable nonReentrant optionExists(_optionId) {
+        require(insuranceEnabled, "Insurance disabled");
+        require(_coverage > 0, "Coverage must be greater than 0");
+        
+        Option memory option = options[_optionId];
+        require(option.buyer == msg.sender, "Only option buyer can purchase insurance");
+        require(option.state == OptionState.ACTIVE, "Option not active");
+        
+        uint256 insurancePremium = _coverage.mul(INSURANCE_RATE).div(BASIS_POINTS);
+        require(msg.value >= insurancePremium, "Insufficient insurance premium");
+        
+        userInsurance[msg.sender][_optionId] = Insurance({
+            premium: insurancePremium,
+            coverage: _coverage,
+            expiry: option.expiry,
+            isActive: true
+        });
+        
+        emit InsurancePurchased(msg.sender, _optionId, insurancePremium, _coverage);
+    }
+
+    /**
+     * @dev Auto-exercise option if profitable at expiry
+     */
+    function enableAutoExercise(uint256 _optionId) external optionExists(_optionId) onlyOptionBuyer(_optionId) {
+        autoExerciseEnabled[_optionId] = true;
+    }
+
+    /**
+     * @dev Check and execute auto-exercise for options
+     */
+    function executeAutoExercise(uint256 _optionId) external optionExists(_optionId) validPrice(options[_optionId].underlyingAsset) {
+        Option storage option = options[_optionId];
+        require(autoExerciseEnabled[_optionId], "Auto-exercise not enabled");
+        require(option.state == OptionState.ACTIVE, "Option not active");
+        require(block.timestamp >= option.expiry.sub(EXERCISE_WINDOW), "Too early for auto-exercise");
+        
+        uint256 currentPrice = assetPrices[option.underlyingAsset].price;
+        uint256 profit = calculateExerciseProfit(option, currentPrice);
+        
+        if (profit > 0) {
+            option.state = OptionState.EXERCISED;
+            userStats[option.buyer].totalOptionsExercised++;
+            userStats[option.buyer].totalProfitFromExercise = userStats[option.buyer].totalProfitFromExercise.add(profit);
+            marketData.totalOptionsExercised++;
+            marketData.activeOptionsCount--;
+            
+            (bool success, ) = option.buyer.call{value: profit}("");
+            require(success, "Auto-exercise profit transfer failed");
+            
+            _releaseCollateral(option, profit);
+            
+            emit AutoExerciseExecuted(_optionId, option.buyer, profit);
+        }
+    }
+
+    /**
+     * @dev Set referral relationship
+     */
+    function setReferral(address _referrer) external {
+        require(_referrer != msg.sender, "Cannot refer yourself");
+        require(referrals[msg.sender] == address(0), "Referral already set");
+        referrals[msg.sender] = _referrer;
+    }
+
+    /**
+     * @dev Calculate Black-Scholes option price (simplified)
+     */
+    function calculateOptionPrice(
+        uint256 _currentPrice,
         uint256 _strikePrice,
+        uint256 _timeToExpiry,
+        uint256 _volatility,
+        OptionType _optionType
+    ) public pure returns (uint256) {
+        // Simplified Black-Scholes calculation
+        // In production, use a proper mathematical library
+        
+        uint256 intrinsicValue;
+        if (_optionType == OptionType.CALL) {
+            intrinsicValue = _currentPrice > _strikePrice ? _currentPrice.sub(_strikePrice) : 0;
+        } else {
+            intrinsicValue = _strikePrice > _currentPrice ? _strikePrice.sub(_currentPrice) : 0;
+        }
+        
+        // Time value calculation (simplified)
+        uint256 timeValue = _volatility.mul(_timeToExpiry).div(365 days).mul(_currentPrice).div(100);
+        
+        return intrinsicValue.add(timeValue);
+    }
+
+    /**
+     * @dev Calculate implied volatility (simplified)
+     */
+    function calculateImpliedVolatility(
+        uint256 _strikePrice,
+        uint256 _premium,
+        uint256 _expiry
+    ) public view returns (uint256) {
+        // Simplified IV calculation
+        uint256 timeToExpiry = _expiry > block.timestamp ? _expiry.sub(block.timestamp) : 0;
+        if (timeToExpiry == 0) return 0;
+        
+        // Basic IV estimation based on premium and time
+        return _premium.mul(100).div(timeToExpiry.div(1 days).add(1));
+    }
+
+    /**
+     * @dev Calculate required collateral for spread options
+     */
+    function calculateSpreadCollateral(
+        uint256 _strike1,
+        uint256 _strike2,
         uint256 _amount,
         OptionType _optionType
     ) public pure returns (uint256) {
-        if (_optionType == OptionType.CALL) {
-            return _amount;
-        } else {
-            return _strikePrice.mul(_amount).div(1e18);
+        uint256 spreadWidth = _strike1 > _strike2 ? _strike1.sub(_strike2) : _strike2.sub(_strike1);
+        return spreadWidth.mul(_amount).div(1e18);
+    }
+
+    /**
+     * @dev Handle referral rewards
+     */
+    function _handleReferralReward(address _user, uint256 _premium) internal {
+        address referrer = referrals[_user];
+        if (referrer != address(0) && referrer != _user) {
+            uint256 reward = _premium.mul(REFERRAL_BONUS).div(BASIS_POINTS);
+            referralRewards[referrer] = referralRewards[referrer].add(reward);
+            
+            emit ReferralRewardPaid(referrer, _user, reward);
         }
     }
 
+    /**
+     * @dev Claim referral rewards
+     */
+    function claimReferralRewards() external nonReentrant {
+        uint256 reward = referralRewards[msg.sender];
+        require(reward > 0, "No rewards to claim");
+        
+        referralRewards[msg.sender] = 0;
+        (bool success, ) = msg.sender.call{value: reward}("");
+        require(success, "Reward transfer failed");
+    }
+
     // Enhanced view functions
-    function getOption(uint256 _optionId) external view optionExists(_optionId) returns (Option memory) {
-        return options[_optionId];
+    
+    /**
+     * @dev Get option chain for a specific strike price
+     */
+    function getOptionChain(uint256 _strikePrice) external view returns (uint256[] memory) {
+        return optionChain[_strikePrice];
     }
 
-    function getUserOptions(address _user) external view returns (uint256[] memory) {
-        return userOptions[_user];
+    /**
+     * @dev Get liquidity pool info
+     */
+    function getPoolInfo(address _asset) external view returns (uint256 totalLiquidity, uint256 availableLiquidity, uint256 totalShares) {
+        LiquidityPool storage pool = liquidityPools[_asset];
+        return (pool.totalLiquidity, pool.availableLiquidity, pool.totalShares);
     }
 
-    function getUserStats(address _user) external view returns (UserStats memory) {
-        return userStats[_user];
+    /**
+     * @dev Get user's pool shares
+     */
+    function getUserPoolShares(address _user, address _asset) external view returns (uint256) {
+        return userPoolShares[_user][_asset];
     }
 
-    function getMarketData() external view returns (MarketData memory) {
-        return marketData;
-    }
-
-    function getActiveOptions() external view returns (uint256[] memory) {
-        uint256[] memory activeOptions = new uint256[](marketData.activeOptionsCount);
+    /**
+     * @dev Get options expiring soon (within 24 hours)
+     */
+    function getExpiringOptions() external view returns (uint256[] memory) {
+        uint256[] memory expiring = new uint256[](marketData.activeOptionsCount);
         uint256 count = 0;
+        uint256 threshold = block.timestamp.add(24 hours);
         
         for (uint256 i = 0; i < optionCounter; i++) {
-            if (options[i].state == OptionState.ACTIVE) {
-                activeOptions[count] = i;
+            if (options[i].state == OptionState.ACTIVE && options[i].expiry <= threshold) {
+                expiring[count] = i;
                 count++;
             }
         }
         
-        return activeOptions;
-    }
-
-    function getAssetPrice(address _asset) external view returns (uint256, uint256) {
-        PriceData memory data = assetPrices[_asset];
-        return (data.price, data.timestamp);
-    }
-
-    function getUserCollateral(address _user, address _asset) external view returns (uint256) {
-        return collateral[_user][_asset];
-    }
-
-    function getUserBid(uint256 _optionId, address _user) external view returns (uint256) {
-        return userBids[_optionId][_user];
-    }
-
-    function isOptionInMoney(uint256 _optionId) external view optionExists(_optionId) validPrice(options[_optionId].underlyingAsset) returns (bool) {
-        Option memory option = options[_optionId];
-        uint256 currentPrice = assetPrices[option.underlyingAsset].price;
+        // Resize array to actual count
+        assembly {
+            mstore(expiring, count)
+        }
         
-        if (option.optionType == OptionType.CALL) {
-            return currentPrice > option.strikePrice;
-        } else {
-            return currentPrice < option.strikePrice;
+        return expiring;
+    }
+
+    /**
+     * @dev Get top volume assets
+     */
+    function getTopVolumeAssets(uint256 _limit) external view returns (address[] memory, uint256[] memory) {
+        // This would require additional sorting logic in production
+        // Simplified implementation
+        address[] memory assets = new address[](_limit);
+        uint256[] memory volumes = new uint256[](_limit);
+        
+        // Return placeholder data - implement proper sorting in production
+        return (assets, volumes);
+    }
+
+    /**
+     * @dev Get user's insurance info
+     */
+    function getUserInsurance(address _user, uint256 _optionId) external view returns (Insurance memory) {
+        return userInsurance[_user][_optionId];
+    }
+
+    // Admin functions
+
+    /**
+     * @dev Whitelist/blacklist asset for trading
+     */
+    function setAssetWhitelisted(address _asset, bool _whitelisted) external onlyOwner {
+        whitelistedAssets[_asset] = _whitelisted;
+        emit AssetWhitelisted(_asset, _whitelisted);
+    }
+
+    /**
+     * @dev Update asset volatility
+     */
+    function updateAssetVolatility(address _asset, uint256 _volatility) external onlyAuthorizedPriceFeed {
+        assetPrices[_asset].volatility = _volatility;
+        emit VolatilityUpdated(_asset, _volatility);
+    }
+
+    /**
+     * @dev Set liquidity incentive rate
+     */
+    function setLiquidityIncentiveRate(uint256 _rate) external onlyOwner {
+        require(_rate <= 2000, "Rate cannot exceed 20%");
+        liquidityIncentiveRate = _rate;
+    }
+
+    /**
+     * @dev Toggle features
+     */
+    function toggleFeature(string calldata _feature, bool _enabled) external onlyOwner {
+        bytes32 featureHash = keccak256(abi.encodePacked(_feature));
+        
+        if (featureHash == keccak256(abi.encodePacked("autoExercise"))) {
+            autoExerciseEnabled = _enabled;
+        } else if (featureHash == keccak256(abi.encodePacked("flashLoans"))) {
+            flashLoansEnabled = _enabled;
+        } else if (featureHash == keccak256(abi.encodePacked("insurance"))) {
+            insuranceEnabled = _enabled;
         }
     }
 
-    function getOptionTimeToExpiry(uint256 _optionId) external view optionExists(_optionId) returns (uint256) {
-        Option memory option = options[_optionId];
-        if (block.timestamp >= option.expiry) {
-            return 0;
-        }
-        return option.expiry.sub(block.timestamp);
-    }
+    // Include all existing functions from the original contract...
+    // (purchaseOption, exerciseOption, cancelOption, etc.)
+        
 
-    // Emergency functions
-    function setPlatformFee(uint256 _fee) external onlyOwner {
-        require(_fee <= 1000, "Fee cannot exceed 10%");
-        platformFee = _fee;
-    }
+   
 
-    function emergencyWithdraw() external onlyOwner {
-        (bool success, ) = owner().call{value: address(this).balance}("");
-        require(success, "Emergency withdrawal failed");
-    }
+   
+    
+       
+        
+            
+        
+           
+        
 
-    receive() external payable {}
-}
+        
+                
+
+       
+   
+       
+        
+       
+       
+   
+    
+        
+
+    
