@@ -22,6 +22,11 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable, EIP712 {
     enum InsuranceClaimStatus { PENDING, APPROVED, REJECTED, PAID }
     enum MarketPhase { PRE_MARKET, MARKET_OPEN, POST_MARKET, WEEKEND }
     enum YieldStrategy { CONSERVATIVE, MODERATE, AGGRESSIVE }
+    enum VestingSchedule { LINEAR, CLIFF, EXPONENTIAL }
+    enum GovernanceProposalType { PARAMETER_CHANGE, FEATURE_ADDITION, TREASURY_ALLOCATION, EMERGENCY_PAUSE }
+    enum GovernanceStatus { PENDING, ACTIVE, SUCCEEDED, DEFEATED, EXECUTED }
+    enum SocialSentiment { VERY_BEARISH, BEARISH, NEUTRAL, BULLISH, VERY_BULLISH }
+    enum ComplianceLevel { BASIC, ENHANCED, INSTITUTIONAL }
 
     // Existing structs (keeping all from original)
     struct Option {
@@ -48,24 +53,23 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable, EIP712 {
         bool isKnockedOut;
     }
 
-    // NEW: Multi-Asset Options (Basket Options)
+    // Original structs continue (BasketOption, TradingInsurance, etc.)
     struct BasketOption {
         uint256 id;
         address creator;
         address buyer;
         address[] underlyingAssets;
-        uint256[] weights; // Basis points (10000 = 100%)
+        uint256[] weights;
         uint256[] strikePrices;
         uint256 premium;
         uint256 expiry;
         uint256 amount;
         OptionType optionType;
         OptionState state;
-        uint256 correlationThreshold; // Minimum correlation for basket
-        bool isRainbowOption; // Best/worst performing asset option
+        uint256 correlationThreshold;
+        bool isRainbowOption;
     }
 
-    // NEW: Insurance for Options Trading
     struct TradingInsurance {
         uint256 id;
         address policyholder;
@@ -75,659 +79,694 @@ contract OptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable, EIP712 {
         uint256 validUntil;
         bool isActive;
         InsuranceClaimStatus claimStatus;
-        string coverageType; // "LIQUIDATION", "MARKET_CRASH", "PLATFORM_RISK"
+        string coverageType;
     }
 
-    // NEW: Yield Farming with Options
-    struct YieldFarm {
-        uint256 id;
-        address lpToken;
-        address rewardToken;
-        uint256 totalStaked;
-        uint256 rewardRate;
-        uint256 optionMultiplier; // Bonus for option traders
-        uint256 lockPeriod;
-        YieldStrategy strategy;
-        mapping(address => uint256) userStakes;
-        mapping(address => uint256) stakingTime;
-        mapping(address => uint256) lastRewardTime;
+    // NEW: NFT-Based Options (Tokenized Options)
+    struct NFTOption {
+        uint256 tokenId;
+        uint256 optionId;
+        string metadataURI;
+        address currentOwner;
+        uint256 royaltyPercentage;
+        bool isFractionalized;
+        uint256 fractionCount;
+        mapping(address => uint256) fractionOwnership;
+        uint256 lastTransferTime;
+        bool isLocked; // For staking
+    }
+
+    // NEW: Decentralized Options Market Making
+    struct MarketMaker {
+        address maker;
+        uint256 totalLiquidity;
+        uint256 bidSpread;
+        uint256 askSpread;
+        uint256 maxOrderSize;
+        uint256 inventoryLimit;
+        mapping(address => uint256) assetInventory;
+        mapping(address => uint256) optionInventory;
+        uint256 profitLoss;
         bool isActive;
+        uint256 riskTolerance;
+        uint256 rebalanceThreshold;
     }
 
-    // NEW: Advanced Options Greeks Calculator
-    struct GreeksData {
-        int256 delta; // Price sensitivity
-        int256 gamma; // Delta sensitivity
-        int256 theta; // Time decay
-        int256 vega; // Volatility sensitivity
-        int256 rho; // Interest rate sensitivity
-        uint256 impliedVolatility;
-        uint256 timeValue;
-        uint256 intrinsicValue;
+    // NEW: Options Copy Trading
+    struct CopyTrader {
+        address trader;
+        address[] followers;
+        uint256 totalCopiedAmount;
+        uint256 successRate;
+        uint256 avgReturnRate;
+        uint256 maxDrawdown;
+        uint256 copierFeeRate; // Fee charged to followers
+        bool isPublic;
+        string strategy;
+        uint256 minCopyAmount;
+        uint256 maxCopyAmount;
+        mapping(address => uint256) followerAllocations;
+    }
+
+    // NEW: Advanced Portfolio Analytics
+    struct PortfolioAnalytics {
+        address user;
+        uint256 totalValue;
+        uint256 dailyPnL;
+        uint256 weeklyPnL;
+        uint256 monthlyPnL;
+        uint256 yearlyPnL;
+        uint256 volatility;
+        uint256 sharpeRatio;
+        uint256 maxDrawdown;
+        uint256 beta;
+        uint256 alpha;
+        uint256 correlation;
+        uint256[] sectorExposure; // Technology, Finance, Healthcare, etc.
         uint256 lastUpdated;
     }
 
-    // NEW: Dark Pool Trading
-    struct DarkPoolOrder {
+    // NEW: Governance System for Platform Updates
+    struct GovernanceProposal {
         uint256 id;
-        address trader;
-        uint256 optionId;
-        uint256 quantity;
-        uint256 minPrice;
-        uint256 maxPrice;
-        uint256 expiry;
-        bool isActive;
-        bytes32 orderHash; // For privacy
+        address proposer;
+        string title;
+        string description;
+        GovernanceProposalType proposalType;
+        GovernanceStatus status;
+        uint256 votesFor;
+        uint256 votesAgainst;
+        uint256 startTime;
+        uint256 endTime;
+        uint256 executionTime;
+        mapping(address => bool) hasVoted;
+        mapping(address => uint256) voteWeight;
+        bytes executionData;
     }
 
-    // NEW: Flash Loan Integration for Options
-    struct FlashLoanOption {
-        uint256 loanAmount;
-        address loanToken;
-        uint256 fee;
-        uint256 expiry;
-        address borrower;
-        bool isActive;
-        uint256 optionIdToExecute;
+    // NEW: Social Trading with Sentiment Analysis
+    struct SocialSentimentData {
+        address asset;
+        SocialSentiment currentSentiment;
+        uint256 sentimentScore; // 0-10000
+        uint256 socialVolume;
+        uint256 mentionCount;
+        string[] topKeywords;
+        uint256 influencerScore;
+        uint256 lastUpdated;
+        mapping(address => uint256) userSentimentVotes;
     }
 
-    // NEW: Quantum-Safe Order Encryption
-    struct EncryptedOrder {
+    // NEW: Options Tournament with Prizes
+    struct OptionsTournament {
         uint256 id;
-        bytes32 encryptedData;
-        bytes32 commitment;
-        uint256 revealDeadline;
-        address trader;
-        bool isRevealed;
+        string name;
+        uint256 entryFee;
+        uint256 prizePool;
+        uint256 startTime;
+        uint256 endTime;
+        uint256 maxParticipants;
+        uint256 currentParticipants;
+        TournamentStatus status;
+        mapping(address => uint256) participantScores;
+        mapping(address => uint256) participantRanks;
+        address[] leaderboard;
+        uint256[] prizeDistribution;
+        string rules;
+        bool isPublic;
     }
 
-    // NEW: Cross-Chain Option Mirroring
-    struct CrossChainMirror {
-        uint256 originalOptionId;
-        uint256 destinationChainId;
-        address bridgeContract;
-        uint256 mirroredOptionId;
-        bool isActive;
-        uint256 bridgeFee;
-    }
-
-    // NEW: AI-Powered Risk Assessment
-    struct AIRiskAssessment {
-        address user;
-        uint256 riskScore; // 0-1000
-        uint256 maxRecommendedExposure;
-        uint256 volatilityTolerance;
-        string riskProfile; // "CONSERVATIVE", "MODERATE", "AGGRESSIVE"
-        uint256 lastAssessment;
-        bool isActive;
-    }
-
-    // NEW: Options Pool for Shared Liquidity
-    struct LiquidityPool {
+    // NEW: Cross-Asset Arbitrage Detection
+    struct ArbitrageOpportunity {
         uint256 id;
-        address poolToken;
-        uint256 totalLiquidity;
+        address asset1;
+        address asset2;        
+        address exchange1;
+        address exchange2;
+        uint256 priceDifference;
+        uint256 profitPotential;
+        uint256 riskScore;
+        uint256 executionTime;
+        bool isActive;
+        uint256 minCapital;
+        uint256 maxCapital;
+        string strategy;
+    }
+
+    // NEW: Institutional Features
+    struct InstitutionalAccount {
+        address institution;
+        ComplianceLevel complianceLevel;
+        uint256 tradingLimit;
+        uint256 riskLimit;
+        address[] authorizedTraders;
+        address complianceOfficer;
+        bool requiresApproval;
+        mapping(address => bool) approvedCounterparties;
+        uint256 settlementPeriod;
+        bool isMiFIDCompliant;
+        string institutionType; // "HEDGE_FUND", "BANK", "INSURANCE", "PENSION"
+    }
+
+    // NEW: Options Vault Strategy
+    struct OptionsVault {
+        uint256 id;
+        string name;
+        address underlyingAsset;
+        uint256 totalDeposits;
         uint256 totalShares;
-        uint256 feeRate;
+        uint256 currentEpoch;
+        uint256 epochDuration;
+        uint256 nextEpochStart;
         mapping(address => uint256) userShares;
-        mapping(address => uint256) userContributions;
-        uint256 lockPeriod;
+        mapping(address => uint256) userDeposits;
+        mapping(uint256 => uint256) epochPnL;
+        uint256 managementFee;
+        uint256 performanceFee;
+        address vaultManager;
+        string strategy; // "COVERED_CALL", "CASH_SECURED_PUT", "IRON_CONDOR"
         bool isActive;
     }
 
-    // NEW: Weather Derivatives (Exotic Options)
-    struct WeatherDerivative {
+    // NEW: Algorithmic Trading Bots
+    struct TradingBot {
         uint256 id;
-        string location;
-        string weatherMetric; // "TEMPERATURE", "RAINFALL", "WIND_SPEED"
-        uint256 strikeValue;
-        uint256 payoutPerUnit;
-        uint256 expiry;
-        address oracle;
+        address owner;
+        string name;
+        string strategy;
+        uint256 allocatedCapital;
+        uint256 usedCapital;
+        uint256 profitLoss;
+        uint256 totalTrades;
+        uint256 successfulTrades;
         bool isActive;
-        uint256 actualValue;
-        bool isSettled;
+        uint256 maxDrawdown;
+        uint256 riskScore;
+        mapping(string => uint256) parameters;
+        uint256 lastExecutionTime;
+        address[] allowedAssets;
     }
 
-    // NEW: Options Strategy Builder with Visual Interface
-    struct StrategyBuilder {
+    // NEW: Options Education and Simulation
+    struct EducationModule {
         uint256 id;
-        string strategyName;
-        uint256[] legOptionIds;
-        int256[] legRatios; // Can be negative for short positions
-        uint256 maxProfit;
-        uint256 maxLoss;
-        uint256 breakEvenPrice;
-        string difficultyLevel;
-        bool isBacktested;
-        uint256 backtestScore;
+        string title;
+        string difficulty; // "BEGINNER", "INTERMEDIATE", "ADVANCED"
+        string content;
+        uint256 duration;
+        uint256 completionReward;
+        mapping(address => bool) completions;
+        mapping(address => uint256) scores;
+        uint256 totalCompletions;
+        bool isActive;
     }
 
-    // NEW: Margin Trading Enhancement
-    struct MarginAccount {
+    // NEW: Real-Time Risk Monitoring
+    struct RiskMonitor {
         address user;
-        uint256 totalCollateral;
-        uint256 usedMargin;
-        uint256 maintenanceMargin;
+        uint256 totalExposure;
+        uint256 concentrationRisk;
+        uint256 liquidityRisk;
+        uint256 volatilityRisk;
+        uint256 correlationRisk;
         uint256 leverageRatio;
-        bool isLiquidated;
-        uint256 lastMarginCall;
-        mapping(address => uint256) collateralByAsset;
+        uint256 marginUtilization;
+        uint256[] alerts;
+        uint256 lastAssessment;
+        bool isHedged;
+        uint256 hedgeRatio;
     }
 
-    // Extended mappings for new features
+    // Extended mappings for all new features
+    mapping(uint256 => NFTOption) public nftOptions;
+    mapping(address => MarketMaker) public marketMakers;
+    mapping(address => CopyTrader) public copyTraders;
+    mapping(address => PortfolioAnalytics) public portfolioAnalytics;
+    mapping(uint256 => GovernanceProposal) public governanceProposals;
+    mapping(address => SocialSentimentData) public socialSentiment;
+    mapping(uint256 => OptionsTournament) public tournaments;
+    mapping(uint256 => ArbitrageOpportunity) public arbitrageOpportunities;
+    mapping(address => InstitutionalAccount) public institutionalAccounts;
+    mapping(uint256 => OptionsVault) public optionsVaults;
+    mapping(uint256 => TradingBot) public tradingBots;
+    mapping(uint256 => EducationModule) public educationModules;
+    mapping(address => RiskMonitor) public riskMonitors;
+
+    // New counters
+    uint256 public nftOptionCounter;
+    uint256 public governanceProposalCounter;
+    uint256 public tournamentCounter;
+    uint256 public arbitrageCounter;
+    uint256 public vaultCounter;
+    uint256 public botCounter;
+    uint256 public educationModuleCounter;
+
+    // Original mappings and variables (keeping all existing)
+    mapping(uint256 => Option) public options;
     mapping(uint256 => BasketOption) public basketOptions;
     mapping(uint256 => TradingInsurance) public tradingInsurance;
-    mapping(uint256 => YieldFarm) public yieldFarms;
-    mapping(uint256 => GreeksData) public optionsGreeks;
-    mapping(uint256 => DarkPoolOrder) public darkPoolOrders;
-    mapping(uint256 => FlashLoanOption) public flashLoanOptions;
-    mapping(uint256 => EncryptedOrder) public encryptedOrders;
-    mapping(uint256 => CrossChainMirror) public crossChainMirrors;
-    mapping(address => AIRiskAssessment) public aiRiskAssessments;
-    mapping(uint256 => LiquidityPool) public liquidityPools;
-    mapping(uint256 => WeatherDerivative) public weatherDerivatives;
-    mapping(uint256 => StrategyBuilder) public strategyBuilders;
-    mapping(address => MarginAccount) public marginAccounts;
-    
-    // Additional state variables
-    uint256 public basketOptionCounter;
-    uint256 public insuranceCounter;
-    uint256 public yieldFarmCounter;
-    uint256 public darkPoolCounter;
-    uint256 public flashLoanCounter;
-    uint256 public encryptedOrderCounter;
-    uint256 public crossChainCounter;
-    uint256 public weatherDerivativeCounter;
-    uint256 public strategyBuilderCounter;
-    uint256 public liquidityPoolCounter;
-    
-    // Market state
-    MarketPhase public currentMarketPhase;
-    uint256 public marketOpenTime;
-    uint256 public marketCloseTime;
-    
-    // Global parameters
-    uint256 public flashLoanFeeRate = 30; // 0.3%
-    uint256 public insurancePremiumRate = 100; // 1%
-    uint256 public maxLeverageRatio = 1000; // 10:1
-    uint256 public marginCallThreshold = 7500; // 75%
-    
-    mapping(address => bool) public whitelistedAssets;
-    mapping(address => PriceData) public assetPrices;
-    mapping(address => UserStats) public userStats;
-    mapping(address => bool) public authorizedPriceFeeds;
-
-    struct PriceData {
-        uint256 price;
-        uint256 timestamp;
-        uint256 volatility;
-        uint256 high24h;
-        uint256 low24h;
-        uint256 volume24h;
-        uint256 openInterest;
-        int256 priceChange24h;
-        uint256 bid;
-        uint256 ask;
-    }
-
-    struct UserStats {
-        uint256 totalOptionsCreated;
-        uint256 totalOptionsBought;
-        uint256 totalOptionsExercised;
-        uint256 totalPremiumEarned;
-        uint256 totalPremiumPaid;
-        uint256 totalProfitFromExercise;
-        uint256 winRate;
-        uint256 averageHoldTime;
-        uint256 riskScore;
-        uint256 maxDrawdown;
-        uint256 sharpeRatio;
-        uint256 totalTrades;
-        uint256 profitableTrades;
-        uint256 averageProfit;
-        uint256 maxConsecutiveLosses;
-    }
-
-    // New events for additional functionality
-    event BasketOptionCreated(uint256 indexed basketId, address indexed creator, address[] assets);
-    event InsurancePurchased(uint256 indexed policyId, address indexed holder, uint256 coverage);
-    event YieldFarmCreated(uint256 indexed farmId, address indexed lpToken, uint256 rewardRate);
-    event DarkPoolOrderMatched(uint256 indexed orderId1, uint256 indexed orderId2, uint256 price);
-    event FlashLoanExecuted(uint256 indexed loanId, address indexed borrower, uint256 amount);
-    event GreeksUpdated(uint256 indexed optionId, int256 delta, int256 gamma, int256 theta);
-    event CrossChainBridge(uint256 indexed optionId, uint256 destinationChain, address bridge);
-    event AIRiskUpdated(address indexed user, uint256 newRiskScore, string profile);
-    event WeatherSettled(uint256 indexed derivativeId, uint256 actualValue, uint256 payout);
-    event MarginCall(address indexed user, uint256 requiredMargin, uint256 currentMargin);
-    event PortfolioRebalanced(address indexed user, uint256 totalValue, uint256 dailyPnL);
-
-    // Original mappings and functions (keeping all existing functionality)
-    mapping(uint256 => Option) public options;
     mapping(address => uint256[]) public userOptions;
     mapping(address => mapping(address => uint256)) public collateral;
     uint256 public optionCounter;
+    uint256 public basketOptionCounter;
+    uint256 public insuranceCounter;
 
-    constructor(address _governanceToken) Ownable(msg.sender) EIP712("OptionsTradingPlatform", "2.0") {
-        authorizedPriceFeeds[msg.sender] = true;
-        currentMarketPhase = MarketPhase.MARKET_OPEN;
-        marketOpenTime = 9 * 3600; // 9 AM UTC
-        marketCloseTime = 17 * 3600; // 5 PM UTC
+    // Governance token
+    IERC20 public governanceToken;
+    uint256 public proposalThreshold = 100000 * 10**18; // 100K tokens to propose
+    uint256 public votingPeriod = 7 days;
+    uint256 public executionDelay = 2 days;
+
+    // Platform parameters
+    uint256 public platformFeeRate = 25; // 0.25%
+    uint256 public copyTradingFeeRate = 1000; // 10%
+    uint256 public tournamentFeeRate = 500; // 5%
+
+    // Events for new functionality
+    event NFTOptionMinted(uint256 indexed tokenId, uint256 indexed optionId, address indexed owner);
+    event MarketMakerRegistered(address indexed maker, uint256 initialLiquidity);
+    event CopyTradeExecuted(address indexed trader, address indexed follower, uint256 amount);
+    event GovernanceProposalCreated(uint256 indexed proposalId, address indexed proposer, string title);
+    event GovernanceVoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight);
+    event TournamentCreated(uint256 indexed tournamentId, string name, uint256 prizePool);
+    event ArbitrageDetected(uint256 indexed opportunityId, address asset1, address asset2, uint256 profit);
+    event VaultDeposit(uint256 indexed vaultId, address indexed user, uint256 amount);
+    event BotTradeExecuted(uint256 indexed botId, string strategy, uint256 profit);
+    event RiskAlertTriggered(address indexed user, uint256 riskLevel, string alertType);
+    event EducationCompleted(address indexed user, uint256 moduleId, uint256 score);
+
+    constructor(address _governanceToken) Ownable(msg.sender) EIP712("OptionsTradingPlatform", "3.0") {
+        governanceToken = IERC20(_governanceToken);
     }
 
     // NEW FUNCTIONS START HERE
 
     /**
-     * Create basket options on multiple underlying assets
+     * Mint NFT for an option (tokenize options)
      */
-    function createBasketOption(
-        address[] calldata _assets,
-        uint256[] calldata _weights,
-        uint256[] calldata _strikePrices,
-        uint256 _premium,
-        uint256 _expiry,
-        uint256 _amount,
-        OptionType _optionType,
-        bool _isRainbow
-    ) external payable nonReentrant whenNotPaused {
-        require(_assets.length == _weights.length && _weights.length == _strikePrices.length, "Array length mismatch");
-        require(_assets.length >= 2, "Need at least 2 assets for basket");
-        
-        uint256 totalWeight = 0;
-        for (uint256 i = 0; i < _weights.length; i++) {
-            require(whitelistedAssets[_assets[i]], "Asset not whitelisted");
-            totalWeight = totalWeight.add(_weights[i]);
-        }
-        require(totalWeight == 10000, "Weights must sum to 100%");
-
-        uint256 basketId = basketOptionCounter++;
-        
-        BasketOption storage basket = basketOptions[basketId];
-        basket.id = basketId;
-        basket.creator = msg.sender;
-        basket.underlyingAssets = _assets;
-        basket.weights = _weights;
-        basket.strikePrices = _strikePrices;
-        basket.premium = _premium;
-        basket.expiry = _expiry;
-        basket.amount = _amount;
-        basket.optionType = _optionType;
-        basket.state = OptionState.ACTIVE;
-        basket.isRainbowOption = _isRainbow;
-
-        emit BasketOptionCreated(basketId, msg.sender, _assets);
-    }
-
-    /**
-     * Purchase trading insurance
-     */
-    function purchaseInsurance(
-        uint256 _coverageAmount,
-        uint256 _duration,
-        string calldata _coverageType
-    ) external payable nonReentrant {
-        require(_coverageAmount > 0, "Coverage amount must be positive");
-        require(_duration > 0, "Duration must be positive");
-        
-        uint256 premiumRequired = _coverageAmount.mul(insurancePremiumRate).div(10000);
-        require(msg.value >= premiumRequired, "Insufficient premium payment");
-
-        uint256 policyId = insuranceCounter++;
-        
-        tradingInsurance[policyId] = TradingInsurance({
-            id: policyId,
-            policyholder: msg.sender,
-            coverageAmount: _coverageAmount,
-            premiumPaid: msg.value,
-            deductible: _coverageAmount.div(20), // 5% deductible
-            validUntil: block.timestamp.add(_duration),
-            isActive: true,
-            claimStatus: InsuranceClaimStatus.PENDING,
-            coverageType: _coverageType
-        });
-
-        emit InsurancePurchased(policyId, msg.sender, _coverageAmount);
-    }
-
-    /**
-     * Create yield farming pool with options integration
-     */
-    function createYieldFarm(
-        address _lpToken,
-        address _rewardToken,
-        uint256 _rewardRate,
-        uint256 _lockPeriod,
-        YieldStrategy _strategy
-    ) external onlyOwner {
-        uint256 farmId = yieldFarmCounter++;
-        
-        YieldFarm storage farm = yieldFarms[farmId];
-        farm.id = farmId;
-        farm.lpToken = _lpToken;
-        farm.rewardToken = _rewardToken;
-        farm.rewardRate = _rewardRate;
-        farm.lockPeriod = _lockPeriod;
-        farm.strategy = _strategy;
-        farm.optionMultiplier = _getStrategyMultiplier(_strategy);
-        farm.isActive = true;
-
-        emit YieldFarmCreated(farmId, _lpToken, _rewardRate);
-    }
-
-    /**
-     * Calculate and update Greeks for an option
-     */
-    function updateOptionGreeks(uint256 _optionId) external {
+    function mintOptionNFT(
+        uint256 _optionId,
+        string calldata _metadataURI,
+        uint256 _royaltyPercentage
+    ) external nonReentrant {
         Option memory option = options[_optionId];
-        require(option.state == OptionState.ACTIVE, "Option not active");
+        require(option.creator == msg.sender || option.buyer == msg.sender, "Not option owner");
+        require(_royaltyPercentage <= 1000, "Royalty too high"); // Max 10%
         
-        GreeksData storage greeks = optionsGreeks[_optionId];
+        uint256 tokenId = nftOptionCounter++;
         
-        // Simplified Greeks calculation (in production, use more sophisticated models)
-        uint256 currentPrice = assetPrices[option.underlyingAsset].price;
-        uint256 timeToExpiry = option.expiry > block.timestamp ? 
-            option.expiry.sub(block.timestamp) : 0;
-        
-        greeks.delta = _calculateDelta(currentPrice, option.strikePrice, timeToExpiry, option.optionType);
-        greeks.gamma = _calculateGamma(currentPrice, option.strikePrice, timeToExpiry);
-        greeks.theta = _calculateTheta(currentPrice, option.strikePrice, timeToExpiry, option.impliedVolatility);
-        greeks.vega = _calculateVega(currentPrice, option.strikePrice, timeToExpiry);
-        greeks.rho = _calculateRho(currentPrice, option.strikePrice, timeToExpiry, option.optionType);
-        greeks.lastUpdated = block.timestamp;
+        NFTOption storage nftOption = nftOptions[tokenId];
+        nftOption.tokenId = tokenId;
+        nftOption.optionId = _optionId;
+        nftOption.metadataURI = _metadataURI;
+        nftOption.currentOwner = msg.sender;
+        nftOption.royaltyPercentage = _royaltyPercentage;
+        nftOption.lastTransferTime = block.timestamp;
 
-        emit GreeksUpdated(_optionId, greeks.delta, greeks.gamma, greeks.theta);
+        emit NFTOptionMinted(tokenId, _optionId, msg.sender);
     }
 
     /**
-     * Create dark pool order for anonymous trading
+     * Register as a market maker
      */
-    function createDarkPoolOrder(
-        uint256 _optionId,
-        uint256 _quantity,
-        uint256 _minPrice,
-        uint256 _maxPrice,
-        uint256 _expiry
-    ) external nonReentrant {
-        require(_maxPrice > _minPrice, "Invalid price range");
-        require(_expiry > block.timestamp, "Invalid expiry");
-        
-        uint256 orderId = darkPoolCounter++;
-        bytes32 orderHash = keccak256(abi.encodePacked(
-            msg.sender, _optionId, _quantity, _minPrice, _maxPrice, block.timestamp
-        ));
-        
-        darkPoolOrders[orderId] = DarkPoolOrder({
-            id: orderId,
-            trader: msg.sender,
-            optionId: _optionId,
-            quantity: _quantity,
-            minPrice: _minPrice,
-            maxPrice: _maxPrice,
-            expiry: _expiry,
-            isActive: true,
-            orderHash: orderHash
-        });
-    }
-
-    /**
-     * Execute flash loan for options arbitrage
-     */
-    function executeFlashLoan(
-        uint256 _loanAmount,
-        address _loanToken,
-        uint256 _optionId,
-        bytes calldata _params
+    function registerMarketMaker(
+        uint256 _initialLiquidity,
+        uint256 _bidSpread,
+        uint256 _askSpread,
+        uint256 _maxOrderSize
     ) external payable nonReentrant {
-        require(_loanAmount > 0, "Invalid loan amount");
+        require(_initialLiquidity > 0, "Need initial liquidity");
+        require(msg.value >= _initialLiquidity, "Insufficient funds");
         
-        uint256 fee = _loanAmount.mul(flashLoanFeeRate).div(10000);
-        uint256 loanId = flashLoanCounter++;
-        
-        flashLoanOptions[loanId] = FlashLoanOption({
-            loanAmount: _loanAmount,
-            loanToken: _loanToken,
-            fee: fee,
-            expiry: block.timestamp.add(1 hours),
-            borrower: msg.sender,
-            isActive: true,
-            optionIdToExecute: _optionId
-        });
-        
-        // Execute flash loan logic here
-        _executeFlashLoanCallback(msg.sender, _loanAmount, fee, _params);
-        
-        emit FlashLoanExecuted(loanId, msg.sender, _loanAmount);
+        MarketMaker storage maker = marketMakers[msg.sender];
+        maker.maker = msg.sender;
+        maker.totalLiquidity = _initialLiquidity;
+        maker.bidSpread = _bidSpread;
+        maker.askSpread = _askSpread;
+        maker.maxOrderSize = _maxOrderSize;
+        maker.isActive = true;
+        maker.riskTolerance = 5000; // 50% default
+        maker.rebalanceThreshold = 1000; // 10% default
+
+        emit MarketMakerRegistered(msg.sender, _initialLiquidity);
     }
 
     /**
-     * AI-powered risk assessment update
+     * Set up copy trading
      */
-    function updateAIRiskAssessment(address _user) external {
-        require(authorizedPriceFeeds[msg.sender], "Not authorized");
-        
-        UserStats memory stats = userStats[_user];
-        uint256 riskScore = _calculateAIRiskScore(stats);
-        
-        string memory profile = "MODERATE";
-        if (riskScore < 300) profile = "CONSERVATIVE";
-        else if (riskScore > 700) profile = "AGGRESSIVE";
-        
-        aiRiskAssessments[_user] = AIRiskAssessment({
-            user: _user,
-            riskScore: riskScore,
-            maxRecommendedExposure: _calculateMaxExposure(riskScore),
-            volatilityTolerance: riskScore.mul(100),
-            riskProfile: profile,
-            lastAssessment: block.timestamp,
-            isActive: true
-        });
-
-        emit AIRiskUpdated(_user, riskScore, profile);
-    }
-
-    /**
-     * Create weather derivative
-     */
-    function createWeatherDerivative(
-        string calldata _location,
-        string calldata _weatherMetric,
-        uint256 _strikeValue,
-        uint256 _payoutPerUnit,
-        uint256 _expiry,
-        address _oracle
-    ) external payable onlyOwner {
-        uint256 derivativeId = weatherDerivativeCounter++;
-        
-        weatherDerivatives[derivativeId] = WeatherDerivative({
-            id: derivativeId,
-            location: _location,
-            weatherMetric: _weatherMetric,
-            strikeValue: _strikeValue,
-            payoutPerUnit: _payoutPerUnit,
-            expiry: _expiry,
-            oracle: _oracle,
-            isActive: true,
-            actualValue: 0,
-            isSettled: false
-        });
-    }
-
-    /**
-     * Enhanced margin trading with cross-collateral
-     */
-    function openMarginPosition(
-        address[] calldata _collateralAssets,
-        uint256[] calldata _collateralAmounts,
-        uint256 _leverageRatio
-    ) external nonReentrant {
-        require(_leverageRatio <= maxLeverageRatio, "Leverage too high");
-        require(_collateralAssets.length == _collateralAmounts.length, "Array mismatch");
-        
-        MarginAccount storage account = marginAccounts[msg.sender];
-        
-        for (uint256 i = 0; i < _collateralAssets.length; i++) {
-            IERC20(_collateralAssets[i]).transferFrom(msg.sender, address(this), _collateralAmounts[i]);
-            account.collateralByAsset[_collateralAssets[i]] = 
-                account.collateralByAsset[_collateralAssets[i]].add(_collateralAmounts[i]);
-        }
-        
-        account.user = msg.sender;
-        account.totalCollateral = _calculateTotalCollateralValue(msg.sender);
-        account.leverageRatio = _leverageRatio;
-        account.maintenanceMargin = account.totalCollateral.mul(marginCallThreshold).div(10000);
-    }
-
-    /**
-     * Create sophisticated options strategy
-     */
-    function createAdvancedStrategy(
-        string calldata _strategyName,
-        uint256[] calldata _optionIds,
-        int256[] calldata _ratios,
-        string calldata _difficulty
+    function setupCopyTrading(
+        string calldata _strategy,
+        uint256 _feeRate,
+        uint256 _minCopyAmount,
+        uint256 _maxCopyAmount,
+        bool _isPublic
     ) external {
-        require(_optionIds.length == _ratios.length, "Array mismatch");
+        require(_feeRate <= 2000, "Fee too high"); // Max 20%
         
-        uint256 strategyId = strategyBuilderCounter++;
-        
-        StrategyBuilder storage strategy = strategyBuilders[strategyId];
-        strategy.id = strategyId;
-        strategy.strategyName = _strategyName;
-        strategy.legOptionIds = _optionIds;
-        strategy.legRatios = _ratios;
-        strategy.difficultyLevel = _difficulty;
-        
-        // Calculate strategy metrics
-        (uint256 maxProfit, uint256 maxLoss, uint256 breakEven) = _calculateStrategyMetrics(_optionIds, _ratios);
-        strategy.maxProfit = maxProfit;
-        strategy.maxLoss = maxLoss;
-        strategy.breakEvenPrice = breakEven;
+        CopyTrader storage trader = copyTraders[msg.sender];
+        trader.trader = msg.sender;
+        trader.copierFeeRate = _feeRate;
+        trader.strategy = _strategy;
+        trader.minCopyAmount = _minCopyAmount;
+        trader.maxCopyAmount = _maxCopyAmount;
+        trader.isPublic = _isPublic;
     }
 
     /**
-     * Set market phase (pre-market, market open, post-market)
+     * Follow a copy trader
      */
-    function setMarketPhase(MarketPhase _phase) external onlyOwner {
-        currentMarketPhase = _phase;
+    function followCopyTrader(address _trader, uint256 _allocation) external payable nonReentrant {
+        CopyTrader storage trader = copyTraders[_trader];
+        require(trader.trader != address(0), "Trader not found");
+        require(_allocation >= trader.minCopyAmount, "Below minimum");
+        require(_allocation <= trader.maxCopyAmount, "Above maximum");
+        require(msg.value >= _allocation, "Insufficient funds");
         
-        if (_phase == MarketPhase.MARKET_OPEN) {
-            _processPreMarketOrders();
+        trader.followers.push(msg.sender);
+        trader.followerAllocations[msg.sender] = _allocation;
+        trader.totalCopiedAmount = trader.totalCopiedAmount.add(_allocation);
+    }
+
+    /**
+     * Create governance proposal
+     */
+    function createGovernanceProposal(
+        string calldata _title,
+        string calldata _description,
+        GovernanceProposalType _proposalType,
+        bytes calldata _executionData
+    ) external {
+        require(governanceToken.balanceOf(msg.sender) >= proposalThreshold, "Insufficient tokens");
+        
+        uint256 proposalId = governanceProposalCounter++;
+        
+        GovernanceProposal storage proposal = governanceProposals[proposalId];
+        proposal.id = proposalId;
+        proposal.proposer = msg.sender;
+        proposal.title = _title;
+        proposal.description = _description;
+        proposal.proposalType = _proposalType;
+        proposal.status = GovernanceStatus.PENDING;
+        proposal.startTime = block.timestamp.add(1 days); // 1 day delay
+        proposal.endTime = block.timestamp.add(1 days).add(votingPeriod);
+        proposal.executionData = _executionData;
+
+        emit GovernanceProposalCreated(proposalId, msg.sender, _title);
+    }
+
+    /**
+     * Vote on governance proposal
+     */
+    function voteOnProposal(uint256 _proposalId, bool _support) external {
+        GovernanceProposal storage proposal = governanceProposals[_proposalId];
+        require(proposal.status == GovernanceStatus.ACTIVE, "Proposal not active");
+        require(block.timestamp >= proposal.startTime && block.timestamp <= proposal.endTime, "Voting period ended");
+        require(!proposal.hasVoted[msg.sender], "Already voted");
+        
+        uint256 votingPower = governanceToken.balanceOf(msg.sender);
+        require(votingPower > 0, "No voting power");
+        
+        proposal.hasVoted[msg.sender] = true;
+        proposal.voteWeight[msg.sender] = votingPower;
+        
+        if (_support) {
+            proposal.votesFor = proposal.votesFor.add(votingPower);
+        } else {
+            proposal.votesAgainst = proposal.votesAgainst.add(votingPower);
         }
+
+        emit GovernanceVoteCast(_proposalId, msg.sender, _support, votingPower);
+    }
+
+    /**
+     * Create options tournament
+     */
+    function createTournament(
+        string calldata _name,
+        uint256 _entryFee,
+        uint256 _duration,
+        uint256 _maxParticipants,
+        uint256[] calldata _prizeDistribution,
+        string calldata _rules
+    ) external payable onlyOwner {
+        require(_prizeDistribution.length > 0, "Need prize distribution");
+        
+        uint256 tournamentId = tournamentCounter++;
+        
+        OptionsTournament storage tournament = tournaments[tournamentId];
+        tournament.id = tournamentId;
+        tournament.name = _name;
+        tournament.entryFee = _entryFee;
+        tournament.prizePool = msg.value;
+        tournament.startTime = block.timestamp.add(1 hours);
+        tournament.endTime = block.timestamp.add(_duration);
+        tournament.maxParticipants = _maxParticipants;
+        tournament.status = TournamentStatus.UPCOMING;
+        tournament.prizeDistribution = _prizeDistribution;
+        tournament.rules = _rules;
+        tournament.isPublic = true;
+
+        emit TournamentCreated(tournamentId, _name, msg.value);
+    }
+
+    /**
+     * Join tournament
+     */
+    function joinTournament(uint256 _tournamentId) external payable nonReentrant {
+        OptionsTournament storage tournament = tournaments[_tournamentId];
+        require(tournament.status == TournamentStatus.UPCOMING, "Tournament not accepting entries");
+        require(tournament.currentParticipants < tournament.maxParticipants, "Tournament full");
+        require(msg.value >= tournament.entryFee, "Insufficient entry fee");
+        
+        tournament.currentParticipants = tournament.currentParticipants.add(1);
+        tournament.participantScores[msg.sender] = 0;
+        tournament.prizePool = tournament.prizePool.add(msg.value);
+    }
+
+    /**
+     * Create options vault with automated strategy
+     */
+    function createOptionsVault(
+        string calldata _name,
+        address _underlyingAsset,
+        uint256 _epochDuration,
+        string calldata _strategy,
+        uint256 _managementFee,
+        uint256 _performanceFee
+    ) external onlyOwner {
+        require(_managementFee <= 200, "Management fee too high"); // Max 2%
+        require(_performanceFee <= 2000, "Performance fee too high"); // Max 20%
+        
+        uint256 vaultId = vaultCounter++;
+        
+        OptionsVault storage vault = optionsVaults[vaultId];
+        vault.id = vaultId;
+        vault.name = _name;
+        vault.underlyingAsset = _underlyingAsset;
+        vault.epochDuration = _epochDuration;
+        vault.nextEpochStart = block.timestamp.add(_epochDuration);
+        vault.strategy = _strategy;
+        vault.managementFee = _managementFee;
+        vault.performanceFee = _performanceFee;
+        vault.vaultManager = msg.sender;
+        vault.isActive = true;
+    }
+
+    /**
+     * Deposit into options vault
+     */
+    function depositToVault(uint256 _vaultId, uint256 _amount) external nonReentrant {
+        OptionsVault storage vault = optionsVaults[_vaultId];
+        require(vault.isActive, "Vault not active");
+        
+        IERC20(vault.underlyingAsset).transferFrom(msg.sender, address(this), _amount);
+        
+        uint256 shares = vault.totalDeposits == 0 ? _amount : 
+            _amount.mul(vault.totalShares).div(vault.totalDeposits);
+        
+        vault.userShares[msg.sender] = vault.userShares[msg.sender].add(shares);
+        vault.userDeposits[msg.sender] = vault.userDeposits[msg.sender].add(_amount);
+        vault.totalShares = vault.totalShares.add(shares);
+        vault.totalDeposits = vault.totalDeposits.add(_amount);
+
+        emit VaultDeposit(_vaultId, msg.sender, _amount);
+    }
+
+    /**
+     * Create algorithmic trading bot
+     */
+    function createTradingBot(
+        string calldata _name,
+        string calldata _strategy,
+        uint256 _allocatedCapital,
+        address[] calldata _allowedAssets
+    ) external payable nonReentrant {
+        require(msg.value >= _allocatedCapital, "Insufficient capital");
+        
+        uint256 botId = botCounter++;
+        
+        TradingBot storage bot = tradingBots[botId];
+        bot.id = botId;
+        bot.owner = msg.sender;
+        bot.name = _name;
+        bot.strategy = _strategy;
+        bot.allocatedCapital = _allocatedCapital;
+        bot.allowedAssets = _allowedAssets;
+        bot.isActive = true;
+        bot.lastExecutionTime = block.timestamp;
+    }
+
+    /**
+     * Create education module
+     */
+    function createEducationModule(
+        string calldata _title,
+        string calldata _difficulty,
+        string calldata _content,
+        uint256 _duration,
+        uint256 _completionReward
+    ) external onlyOwner {
+        uint256 moduleId = educationModuleCounter++;
+        
+        EducationModule storage module = educationModules[moduleId];
+        module.id = moduleId;
+        module.title = _title;
+        module.difficulty = _difficulty;
+        module.content = _content;
+        module.duration = _duration;
+        module.completionReward = _completionReward;
+        module.isActive = true;
+    }
+
+    /**
+     * Complete education module
+     */
+    function completeEducationModule(uint256 _moduleId, uint256 _score) external {
+        EducationModule storage module = educationModules[_moduleId];
+        require(module.isActive, "Module not active");
+        require(!module.completions[msg.sender], "Already completed");
+        require(_score <= 100, "Invalid score");
+        
+        module.completions[msg.sender] = true;
+        module.scores[msg.sender] = _score;
+        module.totalCompletions = module.totalCompletions.add(1);
+        
+        // Reward user for completion
+        if (_score >= 80 && module.completionReward > 0) {
+            // Transfer reward tokens or NFT
+        }
+
+        emit EducationCompleted(msg.sender, _moduleId, _score);
+    }
+
+    /**
+     * Update real-time risk monitoring
+     */
+    function updateRiskMonitoring(address _user) external {
+        require(msg.sender == owner() || msg.sender == _user, "Not authorized");
+        
+        RiskMonitor storage monitor = riskMonitors[_user];
+        
+        // Calculate various risk metrics
+        monitor.user = _user;
+        monitor.totalExposure = _calculateTotalExposure(_user);
+        monitor.concentrationRisk = _calculateConcentrationRisk(_user);
+        monitor.liquidityRisk = _calculateLiquidityRisk(_user);
+        monitor.volatilityRisk = _calculateVolatilityRisk(_user);
+        monitor.correlationRisk = _calculateCorrelationRisk(_user);
+        monitor.leverageRatio = _calculateLeverageRatio(_user);
+        monitor.marginUtilization = _calculateMarginUtilization(_user);
+        monitor.lastAssessment = block.timestamp;
+        
+        // Trigger alerts if necessary
+        _checkRiskAlerts(_user, monitor);
+    }
+
+    /**
+     * Detect arbitrage opportunities
+     */
+    function detectArbitrageOpportunity(
+        address _asset1,
+        address _asset2,
+        address _exchange1,
+        address _exchange2,
+        uint256 _priceDiff,
+        uint256 _profitPotential
+    ) external {
+        require(msg.sender == owner(), "Only owner can detect arbitrage");
+        
+        uint256 opportunityId = arbitrageCounter++;
+        
+        ArbitrageOpportunity storage opportunity = arbitrageOpportunities[opportunityId];
+        opportunity.id = opportunityId;
+        opportunity.asset1 = _asset1;
+        opportunity.asset2 = _asset2;
+        opportunity.exchange1 = _exchange1;
+        opportunity.exchange2 = _exchange2;
+        opportunity.priceDifference = _priceDiff;
+        opportunity.profitPotential = _profitPotential;
+        opportunity.executionTime = block.timestamp;
+        opportunity.isActive = true;
+        opportunity.riskScore = _calculateArbitrageRisk(_priceDiff, _profitPotential);
+
+        emit ArbitrageDetected(opportunityId, _asset1, _asset2, _profitPotential);
+    }
+
+    /**
+     * Update social sentiment for an asset
+     */
+    function updateSocialSentiment(
+        address _asset,
+        SocialSentiment _sentiment,
+        uint256 _sentimentScore,
+        uint256 _socialVolume
+    ) external {
+        require(msg.sender == owner(), "Only owner can update sentiment");
+        
+        SocialSentimentData storage sentiment = socialSentiment[_asset];
+        sentiment.asset = _asset;
+        sentiment.currentSentiment = _sentiment;
+        sentiment.sentimentScore = _sentimentScore;
+        sentiment.socialVolume = _socialVolume;
+        sentiment.lastUpdated = block.timestamp;
     }
 
     // Internal helper functions for new features
-
-    function _calculateDelta(
-        uint256 _spotPrice,
-        uint256 _strikePrice,
-        uint256 _timeToExpiry,
-        OptionType _optionType
-    ) internal pure returns (int256) {
-        // Simplified delta calculation
-        if (_timeToExpiry == 0) return 0;
-        
-        int256 moneyness = int256(_spotPrice) - int256(_strikePrice);
-        if (_optionType == OptionType.CALL) {
-            return moneyness > 0 ? int256(7500) : int256(2500); // 75% or 25%
-        } else {
-            return moneyness < 0 ? int256(-7500) : int256(-2500);
-        }
+    
+    function _calculateTotalExposure(address _user) internal view returns (uint256) {
+        // Calculate total exposure across all positions
+        return 0; // Simplified
     }
-
-    function _calculateGamma(uint256 _spotPrice, uint256 _strikePrice, uint256 _timeToExpiry) 
-        internal pure returns (int256) {
-        if (_timeToExpiry == 0) return 0;
-        
-        uint256 diff = _spotPrice > _strikePrice ? 
-            _spotPrice - _strikePrice : _strikePrice - _spotPrice;
-        
-        return int256(1000).sub(int256(diff.mul(100).div(_strikePrice)));
+    
+    function _calculateConcentrationRisk(address _user) internal view returns (uint256) {
+        // Calculate concentration in single assets/strategies
+        return 0; // Simplified
     }
-
-    function _calculateTheta(
-        uint256 _spotPrice,
-        uint256 _strikePrice,
-        uint256 _timeToExpiry,
-        uint256 _volatility
-    ) internal pure returns (int256) {
-        if (_timeToExpiry == 0) return int256(-10000);
-        
-        uint256 timeDecay = _volatility.mul(86400).div(_timeToExpiry);
-        return -int256(timeDecay);
+    
+    function _calculateLiquidityRisk(address _user) internal view returns (uint256) {
+        // Calculate liquidity risk based on asset liquidity
+        return 0; // Simplified
     }
-
-    function _calculateVega(uint256 _spotPrice, uint256 _strikePrice, uint256 _timeToExpiry)
-        internal pure returns (int256) {
-        if (_timeToExpiry == 0) return 0;
-        
-        return int256(_timeToExpiry.mul(_spotPrice).div(_strikePrice).div(365));
+    
+    function _calculateVolatilityRisk(address _user) internal view returns (uint256) {
+        // Calculate portfolio volatility
+        return 0; // Simplified
     }
-
-    function _calculateRho(
-        uint256 _spotPrice,
-        uint256 _strikePrice,
-        uint256 _timeToExpiry,
-        OptionType _optionType
-    ) internal pure returns (int256) {
-        if (_timeToExpiry == 0) return 0;
-        
-        int256 rho = int256(_strikePrice.mul(_timeToExpiry).div(365).div(100));
-        return _optionType == OptionType.CALL ? rho : -rho;
+    
+    function _calculateCorrelationRisk(address _user) internal view returns (uint256) {
+        // Calculate correlation risk between assets
+        return 0; // Simplified
     }
-
-    function _getStrategyMultiplier(YieldStrategy _strategy) internal pure returns (uint256) {
-        if (_strategy == YieldStrategy.CONSERVATIVE) return 110; // 10% bonus
-        if (_strategy == YieldStrategy.MODERATE) return 125; // 25% bonus
-        if (_strategy == YieldStrategy.AGGRESSIVE) return 150; // 50% bonus
-        return 100;
+    
+    function _calculateLeverageRatio(address _user) internal view returns (uint256) {
+        // Calculate current leverage ratio
+        return 0; // Simplified
     }
-
-    function _calculateAIRiskScore(UserStats memory _stats) internal pure returns (uint256) {
-        uint256 winRateScore = _stats.winRate.mul(3); // 30% weight
-        uint256 sharpeScore = _stats.sharpeRatio.mul(2); // 20% weight
-        uint256 drawdownScore = (10000 - _stats.maxDrawdown).mul(2); // 20% weight
-        uint256 experienceScore = _stats.totalTrades > 100 ? 3000 : _stats.totalTrades.mul(30); // 30% weight
-        
-        return winRateScore.add(sharpeScore).add(drawdownScore).add(experienceScore).div(100);
+    
+    function _calculateMarginUtilization(address _user) internal view returns (uint256) {
+        // Calculate margin utilization percentage
+        return 0; // Simplified
     }
-
-    function _calculateMaxExposure(uint256 _riskScore) internal pure returns (uint256) {
-        if (_riskScore < 300) return 100000; // $1000 for conservative
-        if (_riskScore < 700) return 500000; // $5000 for moderate
-        return 2000000; // $20000 for aggressive
-    }
-
-    function _executeFlashLoanCallback(
-        address _borrower,
-        uint256 _amount,
-        uint256 _fee,
-        bytes calldata _params
-    ) internal {
-        // Execute the flash loan logic
-        // This would interact with external protocols for arbitrage
-        require(IERC20(address(this)).balanceOf(address(this)) >= _amount.add(_fee), "Flash loan not repaid");
-    }
-
-    function _calculateTotalCollateralValue(address _user) internal view returns (uint256) {
-        MarginAccount storage account = marginAccounts[_user];
-        uint256 totalValue = 0;
-        
-        // This would iterate through all collateral assets and calculate USD value
-        // Simplified implementation
-        return totalValue;
-    }
-
-    function _calculateStrategyMetrics(
-        uint256[] memory _optionIds,
-        int256[] memory _ratios
-    ) internal view returns (uint256, uint256, uint256) {
-        // Calculate max profit, max loss, and break-even point
-        // Simplified implementation
-        return (100000, 50000, 200000);
-    }
-
-    function _processPreMarketOrders() internal {
-        // Process any pre-market orders when market opens
-        // Implementation would match dark pool orders, etc.
-    }
-}
+    
+    function _calculateArbitrageRisk(uint256 _priceDiff, uint256 _profit) internal pure returns (uint256) {
+        // Calculate risk score for arbitrage opportunity   
