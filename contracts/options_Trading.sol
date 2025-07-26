@@ -38,8 +38,6 @@ contract AdvancedOptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable, E
     enum CrossChainBridge { ETHEREUM, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE }
     enum DeFiProtocol { AAVE, COMPOUND, UNISWAP, CURVE, YEARN }
     enum WeatherDerivativeType { TEMPERATURE, RAINFALL, WIND_SPEED, SNOW_DEPTH }
-
-    // NEW ENUMS for additional functionality
     enum PricingModel { BLACK_SCHOLES, BINOMIAL, MONTE_CARLO, HESTON, LOCAL_VOLATILITY }
     enum SocialTradeType { COPY_TRADE, MIRROR_TRADE, SIGNAL_FOLLOW, PORTFOLIO_COPY }
     enum NFTOptionType { FLOOR_PRICE, TRAIT_BASED, COLLECTION_BASED, FRACTIONALIZED }
@@ -50,6 +48,15 @@ contract AdvancedOptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable, E
     enum OptionsStrategy { COVERED_CALL, PROTECTIVE_PUT, STRADDLE, STRANGLE, IRON_CONDOR, BUTTERFLY }
     enum LeverageType { FIXED, DYNAMIC, ADAPTIVE, RISK_PARITY }
     enum ComplianceFramework { MIFID_II, DODD_FRANK, BASEL_III, GDPR, KYC_AML }
+
+    // NEW ENUMS for added functionality
+    enum DynamicHedgeType { DELTA_NEUTRAL, GAMMA_NEUTRAL, VEGA_NEUTRAL, THETA_NEUTRAL, RHO_NEUTRAL }
+    enum PortfolioInsuranceType { STOP_LOSS, PROTECTIVE_PUT, CPPI, OBPI }
+    enum ArbitrageType { STATISTICAL, TRIANGULAR, CALENDAR_SPREAD, VOLATILITY }
+    enum LiquidityMiningTier { BRONZE, SILVER, GOLD, PLATINUM, DIAMOND }
+    enum FlashLoanType { ARBITRAGE, LIQUIDATION, REFINANCING, SELF_LIQUIDATION }
+    enum CommodityType { GOLD, OIL, WHEAT, CORN, COFFEE, NATURAL_GAS }
+    enum EconomicIndicator { GDP, INFLATION, UNEMPLOYMENT, INTEREST_RATE, VIX }
 
     // Original structs (keeping all existing ones)
     struct Option {
@@ -76,624 +83,604 @@ contract AdvancedOptionsTradingPlatform is ReentrancyGuard, Ownable, Pausable, E
         bool isKnockedOut;
     }
 
-    // NEW: Dynamic Pricing Engine with Multiple Models
-    struct PricingEngine {
-        uint256 engineId;
-        PricingModel primaryModel;
-        PricingModel[] secondaryModels;
-        mapping(PricingModel => uint256) modelWeights;
-        uint256 calibrationFrequency;
-        uint256 lastCalibration;
-        mapping(address => uint256) assetParameters;
-        uint256 modelAccuracy;
+    // NEW: Dynamic Hedging System
+    struct DynamicHedge {
+        uint256 hedgeId;
+        address portfolio;
+        DynamicHedgeType hedgeType;
+        uint256 targetRatio; // Target hedge ratio (basis points)
+        uint256 currentRatio;
+        uint256 rebalanceThreshold; // Trigger rebalance when ratio deviates by this much
+        uint256 lastRebalance;
+        uint256 rebalanceFrequency;
+        uint256 hedgingCost;
+        address[] hedgingInstruments;
+        uint256[] hedgeWeights;
         bool isActive;
-        uint256 computationCost;
-        mapping(uint256 => uint256) historicalPrices; // For model backtesting
+        uint256 totalPnL;
+        mapping(address => uint256) instrumentAllocations;
     }
 
-    // NEW: Social Trading Network
-    struct SocialTrader {
-        address trader;
-        string username;
-        string bio;
-        uint256 followers;
-        uint256 following;
-        uint256 totalTrades;
-        uint256 winRate;
-        uint256 averageReturn;
+    // NEW: Portfolio Insurance System
+    struct PortfolioInsurance {
+        uint256 insuranceId;
+        address insuredPortfolio;
+        PortfolioInsuranceType insuranceType;
+        uint256 floorValue; // Minimum portfolio value to maintain
+        uint256 multiplier; // CPPI multiplier
+        uint256 cushion; // Current cushion above floor
+        uint256 premiumPaid;
         uint256 maxDrawdown;
-        uint256 riskScore;
-        uint256 socialRank;
-        bool isVerified;
-        uint256 copyTradeFee; // Fee percentage for copy trading
-        mapping(address => bool) followers_map;
-        mapping(SocialTradeType => bool) allowedTradeTypes;
-        uint256 lastActiveTime;
-    }
-
-    struct CopyTrade {
-        uint256 copyTradeId;
-        address masterTrader;
-        address copyTrader;
-        SocialTradeType tradeType;
-        uint256 allocationPercentage;
-        uint256 maxSlippage;
-        uint256 maxDrawdown;
-        bool isActive;
-        uint256 totalCopied;
-        uint256 totalProfit;
         uint256 startTime;
-        mapping(uint256 => bool) copiedTrades;
+        uint256 duration;
+        bool isActive;
+        uint256 totalClaims;
+        mapping(uint256 => uint256) valueHistory; // Time => portfolio value
     }
 
-    // NEW: NFT Options Market
-    struct NFTOption {
+    // NEW: Arbitrage Opportunities Scanner
+    struct ArbitrageOpportunity {
+        uint256 arbId;
+        ArbitrageType arbType;
+        address[] assets;
+        uint256[] prices;
+        uint256 expectedProfit;
+        uint256 requiredCapital;
+        uint256 riskScore;
+        uint256 timeWindow; // How long the opportunity lasts
+        uint256 discoveredAt;
+        bool isExecuted;
+        address executor;
+        uint256 actualProfit;
+        mapping(string => uint256) executionSteps; // Step name => execution time
+    }
+
+    // NEW: Liquidity Mining Program
+    struct LiquidityMining {
+        address provider;
+        LiquidityMiningTier tier;
+        uint256 stakedAmount;
+        uint256 stakingStart;
+        uint256 lockupPeriod;
+        uint256 rewardRate; // Rewards per second
+        uint256 accumulatedRewards;
+        uint256 lastClaimTime;
+        uint256 multiplier; // Tier-based multiplier
+        bool isActive;
+        mapping(address => uint256) poolAllocations; // Pool address => staked amount
+        uint256 totalVolumeGenerated;
+        uint256 bonusRewards;
+    }
+
+    // NEW: Advanced Flash Loan System
+    struct FlashLoanRequest {
+        uint256 loanId;
+        address borrower;
+        address asset;
+        uint256 amount;
+        FlashLoanType loanType;
+        uint256 fee;
+        uint256 executionGas;
+        bytes executionData;
+        bool isExecuted;
+        bool isRepaid;
+        uint256 timestamp;
+        uint256 profitGenerated;
+        string strategy; // Human readable strategy description
+    }
+
+    // NEW: Commodity Options Market
+    struct CommodityOption {
         uint256 id;
-        address nftContract;
-        uint256 tokenId;
-        NFTOptionType nftType;
-        uint256 strikePrice; // Floor price or specific value
+        CommodityType commodity;
+        uint256 contractSize; // Standard contract size (e.g., 100 oz gold)
+        uint256 strikePrice;
         uint256 premium;
         uint256 expiry;
+        OptionType optionType;
+        address creator;
+        address buyer;
+        bool physicalDelivery; // True if requires physical delivery
+        string deliveryLocation;
+        uint256 storageFeesPerDay;
+        bool isActive;
+        uint256 qualityGrade; // Commodity quality specifications
+    }
+
+    // NEW: Economic Derivatives
+    struct EconomicDerivative {
+        uint256 id;
+        EconomicIndicator indicator;
+        uint256 strikeValue; // Strike value for the economic indicator
+        uint256 premium;
+        uint256 expiry;
+        OptionType optionType;
+        address creator;
+        address buyer;
+        bool isSettled;
+        uint256 settlementValue;
+        string dataSource; // e.g., "Federal Reserve", "Bureau of Labor Statistics"
+        uint256 settlementDelay; // Days after expiry to settle
+    }
+
+    // NEW: Cross-Asset Correlation Engine
+    struct CorrelationEngine {
+        mapping(bytes32 => int256) correlationMatrix; // hash(asset1, asset2) => correlation
+        mapping(address => uint256[]) priceHistory;
+        uint256 lookbackPeriod; // Days to look back for correlation calculation
+        uint256 lastUpdate;
+        uint256 updateFrequency;
+        mapping(address => mapping(address => uint256)) volatilityAdjustedCorrelation;
+        bool isActive;
+    }
+
+    // NEW: Options Greeks Calculator
+    struct GreeksCalculator {
+        mapping(uint256 => int256) delta; // Option ID => Delta
+        mapping(uint256 => uint256) gamma; // Option ID => Gamma
+        mapping(uint256 => int256) theta; // Option ID => Theta (time decay)
+        mapping(uint256 => uint256) vega; // Option ID => Vega (volatility sensitivity)
+        mapping(uint256 => int256) rho; // Option ID => Rho (interest rate sensitivity)
+        uint256 lastCalculation;
+        uint256 calculationFrequency;
+        mapping(uint256 => uint256) impliedVolSurface; // Strike => IV
+    }
+
+    // NEW: Multi-Asset Basket Options
+    struct BasketOption {
+        uint256 id;
+        address[] underlyingAssets;
+        uint256[] weights; // Basis points (10000 = 100%)
+        uint256 strikePrice;
+        uint256 premium;
+        uint256 expiry;
+        OptionType optionType;
         address creator;
         address buyer;
         bool isActive;
-        bytes32 traitHash; // For trait-based options
-        uint256 collectionFloorPrice;
-        uint256 rarityScore;
-        bool requiresPhysicalDelivery;
-    }
-
-    // NEW: Automated Market Maker for Options
-    struct OptionsAMM {
-        uint256 poolId;
-        address asset;
-        AMMStrategy strategy;
-        uint256 totalLiquidity;
-        uint256 k; // Constant product parameter
-        mapping(uint256 => uint256) strikeLiquidity; // Strike price -> liquidity
-        mapping(uint256 => uint256) expiryLiquidity; // Expiry -> liquidity
-        uint256 feeRate;
-        uint256 impermanentLossProtection;
-        bool isActive;
-        uint256 totalVolume;
-        uint256 totalFees;
-        mapping(address => uint256) liquidityProviders;
-        uint256 minLiquidity;
-        uint256 maxLiquidity;
-    }
-
-    // NEW: Advanced Risk Management System
-    struct RiskManager {
-        address user;
-        RiskLevel maxRiskLevel;
-        uint256 maxPositionSize;
-        uint256 maxDailyLoss;
-        uint256 maxPortfolioConcentration;
-        uint256 varLimit; // Value at Risk limit
-        uint256 stressTestResults;
-        mapping(address => uint256) assetExposureLimits;
-        mapping(OptionsStrategy => uint256) strategyLimits;
-        bool autoLiquidationEnabled;
-        uint256 marginCallThreshold;
-        uint256 lastRiskAssessment;
-        CreditRating creditRating;
-    }
-
-    // NEW: Market Making and Liquidity Provision
-    struct MarketMaker {
-        address maker;
-        uint256 makerId;
-        mapping(address => uint256) quotedSpreads; // Asset -> bid-ask spread
-        mapping(address => uint256) inventoryLimits;
-        mapping(address => uint256) currentInventory;
-        uint256 totalQuotes;
-        uint256 filledQuotes;
-        uint256 totalPnL;
-        bool isActive;
-        uint256 minQuoteSize;
-        uint256 maxQuoteSize;
-        uint256 quotingFrequency;
-        mapping(uint256 => uint256) strikeQuotes; // Strike -> quote count
-    }
-
-    // NEW: Regulatory Compliance and Reporting
-    struct ComplianceModule {
-        address entity;
-        ComplianceFramework framework;
-        mapping(string => bool) requiredDocuments;
-        mapping(string => uint256) documentTimestamps;
-        uint256 lastAudit;
-        uint256 complianceScore;
-        bool isCompliant;
-        mapping(address => bool) authorizedPersons;
-        uint256 reportingFrequency;
-        mapping(uint256 => bytes32) reportHashes;
-        uint256 penaltyScore;
-        bool suspendedTrading;
-    }
-
-    // NEW: Exotic Options and Structured Products
-    struct ExoticOption {
-        uint256 id;
-        address creator;
-        string productName;
-        OptionsStrategy strategy;
-        address[] underlyingAssets;
-        uint256[] weights;
-        uint256[] strikes;
-        uint256[] expiries;
-        uint256 premium;
-        uint256 maxPayout;
-        bool isKnockOut;
-        bool isKnockIn;
-        uint256[] barriers;
-        bytes32 payoffFormula; // Hash of payoff calculation
-        bool isPath_dependent;
-        uint256 observationFrequency;
-    }
-
-    // NEW: Volatility Trading and Swaps
-    struct VolatilitySwap {
-        uint256 swapId;
-        address payer;
-        address receiver;
-        address underlyingAsset;
-        uint256 notional;
-        uint256 strikeVolatility;
-        uint256 startDate;
-        uint256 endDate;
-        uint256 observationFrequency;
-        uint256[] realizedVolatility;
-        bool isVarianceSwap;
-        uint256 cap; // Volatility cap
-        uint256 floor; // Volatility floor
-        bool isSettled;
-        uint256 settlementAmount;
-    }
-
-    // NEW: Algorithmic Trading Strategies
-    struct TradingBot {
-        uint256 botId;
-        address owner;
-        string strategyName;
-        bytes32 strategyHash;
-        mapping(string => uint256) parameters;
-        uint256 allocatedCapital;
-        uint256 currentPnL;
-        uint256 maxDrawdown;
-        uint256 sharpeRatio;
-        bool isActive;
-        uint256 executionFrequency;
-        uint256 lastExecution;
-        mapping(address => bool) allowedAssets;
-        uint256 riskBudget;
-        LeverageType leverageType;
-        uint256 maxLeverage;
-    }
-
-    // NEW: Credit Default Swaps for DeFi Protocols
-    struct CreditDefaultSwap {
-        uint256 cdsId;
-        address protectionBuyer;
-        address protectionSeller;
-        address referenceEntity; // DeFi protocol address
-        uint256 notional;
-        uint256 premium; // Annual premium
-        uint256 startDate;
-        uint256 maturityDate;
-        bool isActive;
-        bool hasDefaulted;
-        uint256[] premiumPayments;
-        uint256 recoveryRate;
-        bytes32[] creditEvents; // Hash of credit event descriptions
-    }
-
-    // NEW: Options Market Intelligence and Analytics
-    struct MarketIntelligence {
-        address asset;
-        uint256 timestamp;
-        uint256 openInterest;
-        uint256 volume;
-        uint256 putCallRatio;
-        uint256 maxPain; // Max pain price
-        uint256 impliedVolatility;
-        uint256 historicalVolatility;
-        mapping(uint256 => uint256) strikePriceDistribution;
-        mapping(uint256 => uint256) expiryDistribution;
-        SocialSentiment sentiment;
-        MarketRegime regime;
-        uint256 flowDirection; // Net flow: positive = bullish, negative = bearish
-        uint256 unusualActivity; // Unusual options activity indicator
+        uint256 correlationAdjustment; // Adjustment for asset correlations
+        mapping(address => uint256) assetPricesAtCreation;
+        uint256 basketValue; // Current basket value
     }
 
     // Enhanced mappings for all new features
-    mapping(uint256 => PricingEngine) public pricingEngines;
-    mapping(address => SocialTrader) public socialTraders;
-    mapping(uint256 => CopyTrade) public copyTrades;
-    mapping(uint256 => NFTOption) public nftOptions;
-    mapping(uint256 => OptionsAMM) public optionsAMMs;
-    mapping(address => RiskManager) public riskManagers;
-    mapping(address => MarketMaker) public marketMakers;
-    mapping(address => ComplianceModule) public complianceModules;
-    mapping(uint256 => ExoticOption) public exoticOptions;
-    mapping(uint256 => VolatilitySwap) public volatilitySwaps;
-    mapping(uint256 => TradingBot) public tradingBots;
-    mapping(uint256 => CreditDefaultSwap) public creditDefaultSwaps;
-    mapping(address => MarketIntelligence) public marketIntelligence;
+    mapping(uint256 => DynamicHedge) public dynamicHedges;
+    mapping(uint256 => PortfolioInsurance) public portfolioInsurances;
+    mapping(uint256 => ArbitrageOpportunity) public arbitrageOpportunities;
+    mapping(address => LiquidityMining) public liquidityMining;
+    mapping(uint256 => FlashLoanRequest) public flashLoanRequests;
+    mapping(uint256 => CommodityOption) public commodityOptions;
+    mapping(uint256 => EconomicDerivative) public economicDerivatives;
+    mapping(uint256 => BasketOption) public basketOptions;
+
+    // System components
+    CorrelationEngine public correlationEngine;
+    GreeksCalculator public greeksCalculator;
 
     // New counters
-    uint256 public pricingEngineCounter;
-    uint256 public copyTradeCounter;
-    uint256 public nftOptionCounter;
-    uint256 public ammPoolCounter;
-    uint256 public exoticOptionCounter;
-    uint256 public volatilitySwapCounter;
-    uint256 public tradingBotCounter;
-    uint256 public cdsCounter;
+    uint256 public dynamicHedgeCounter;
+    uint256 public portfolioInsuranceCounter;
+    uint256 public arbitrageCounter;
+    uint256 public flashLoanCounter;
+    uint256 public commodityOptionCounter;
+    uint256 public economicDerivativeCounter;
+    uint256 public basketOptionCounter;
 
-    // Platform parameters
-    uint256 public socialTradingFeeRate = 500; // 5%
-    uint256 public nftOptionFeeRate = 250; // 2.5%
-    uint256 public ammFeeRate = 30; // 0.3%
-    uint256 public maxLeverage = 1000; // 10x
-    uint256 public minCollateralRatio = 15000; // 150%
+    // Platform parameters for new features
+    uint256 public hedgingFeeRate = 50; // 0.5%
+    uint256 public insurancePremiumRate = 200; // 2%
+    uint256 public arbitrageFeeRate = 1000; // 10% of profit
+    uint256 public flashLoanFeeRate = 9; // 0.09%
+    uint256 public commodityStorageFeeRate = 100; // 1% annually
+    uint256 public maxFlashLoanAmount = 1000000 * 10**18; // 1M tokens
 
     // Events for new functionality
-    event PricingEngineCalibrated(uint256 indexed engineId, PricingModel model, uint256 accuracy);
-    event SocialTraderRegistered(address indexed trader, string username);
-    event CopyTradeStarted(uint256 indexed copyTradeId, address master, address follower);
-    event NFTOptionCreated(uint256 indexed optionId, address nftContract, uint256 tokenId);
-    event AMMPoolCreated(uint256 indexed poolId, address asset, AMMStrategy strategy);
-    event RiskLimitExceeded(address indexed user, RiskLevel level, uint256 exposure);
-    event MarketMakerQuote(address indexed maker, address asset, uint256 bidPrice, uint256 askPrice);
-    event ComplianceViolation(address indexed entity, ComplianceFramework framework, string violation);
-    event ExoticOptionCreated(uint256 indexed optionId, string productName, OptionsStrategy strategy);
-    event VolatilitySwapSettled(uint256 indexed swapId, uint256 realizedVol, uint256 settlement);
-    event TradingBotExecuted(uint256 indexed botId, string strategy, uint256 pnl);
-    event CreditEventTriggered(uint256 indexed cdsId, address entity, bytes32 eventHash);
-    event UnusualActivityDetected(address indexed asset, uint256 volume, uint256 threshold);
+    event DynamicHedgeCreated(uint256 indexed hedgeId, address portfolio, DynamicHedgeType hedgeType);
+    event HedgeRebalanced(uint256 indexed hedgeId, uint256 oldRatio, uint256 newRatio, uint256 cost);
+    event PortfolioInsuranceActivated(uint256 indexed insuranceId, address portfolio, uint256 floorValue);
+    event InsuranceClaimed(uint256 indexed insuranceId, uint256 claimAmount, uint256 portfolioValue);
+    event ArbitrageOpportunityDetected(uint256 indexed arbId, ArbitrageType arbType, uint256 expectedProfit);
+    event ArbitrageExecuted(uint256 indexed arbId, address executor, uint256 actualProfit);
+    event LiquidityMiningRewardsClaimed(address indexed provider, uint256 amount, LiquidityMiningTier tier);
+    event FlashLoanExecuted(uint256 indexed loanId, address borrower, uint256 amount, uint256 profit);
+    event CommodityOptionCreated(uint256 indexed optionId, CommodityType commodity, bool physicalDelivery);
+    event EconomicDataSettlement(uint256 indexed derivativeId, EconomicIndicator indicator, uint256 actualValue);
+    event CorrelationUpdated(address indexed asset1, address indexed asset2, int256 correlation);
+    event GreeksCalculated(uint256 indexed optionId, int256 delta, uint256 gamma, int256 theta);
+    event BasketOptionCreated(uint256 indexed optionId, address[] assets, uint256[] weights);
 
-    constructor(address _governanceToken) Ownable(msg.sender) EIP712("AdvancedOptionsTradingPlatform", "5.0") {
-        // Constructor implementation
+    constructor(address _governanceToken) Ownable(msg.sender) EIP712("AdvancedOptionsTradingPlatform", "6.0") {
+        // Initialize correlation engine
+        correlationEngine.lookbackPeriod = 30; // 30 days
+        correlationEngine.updateFrequency = 86400; // Daily updates
+        correlationEngine.isActive = true;
+        
+        // Initialize Greeks calculator
+        greeksCalculator.calculationFrequency = 3600; // Hourly updates
     }
 
     // NEW FUNCTIONS START HERE
 
     /**
-     * Create advanced pricing engine with multiple models
+     * Create dynamic hedging strategy
      */
-    function createPricingEngine(
-        PricingModel _primaryModel,
-        PricingModel[] calldata _secondaryModels,
-        uint256[] calldata _modelWeights,
-        uint256 _calibrationFrequency
-    ) external onlyOwner {
-        require(_secondaryModels.length == _modelWeights.length, "Array length mismatch");
+    function createDynamicHedge(
+        address _portfolio,
+        DynamicHedgeType _hedgeType,
+        uint256 _targetRatio,
+        uint256 _rebalanceThreshold,
+        address[] calldata _hedgingInstruments,
+        uint256[] calldata _hedgeWeights
+    ) external payable nonReentrant {
+        require(_hedgingInstruments.length == _hedgeWeights.length, "Array length mismatch");
+        require(msg.value >= hedgingFeeRate * _targetRatio / 10000, "Insufficient hedging fee");
         
-        uint256 totalWeight = 0;
-        for (uint256 i = 0; i < _modelWeights.length; i++) {
-            totalWeight = totalWeight.add(_modelWeights[i]);
-        }
-        require(totalWeight <= 10000, "Total weight cannot exceed 100%");
+        uint256 hedgeId = dynamicHedgeCounter++;
         
-        uint256 engineId = pricingEngineCounter++;
+        DynamicHedge storage hedge = dynamicHedges[hedgeId];
+        hedge.hedgeId = hedgeId;
+        hedge.portfolio = _portfolio;
+        hedge.hedgeType = _hedgeType;
+        hedge.targetRatio = _targetRatio;
+        hedge.currentRatio = 0;
+        hedge.rebalanceThreshold = _rebalanceThreshold;
+        hedge.lastRebalance = block.timestamp;
+        hedge.rebalanceFrequency = 3600; // 1 hour default
+        hedge.hedgingInstruments = _hedgingInstruments;
+        hedge.hedgeWeights = _hedgeWeights;
+        hedge.isActive = true;
         
-        PricingEngine storage engine = pricingEngines[engineId];
-        engine.engineId = engineId;
-        engine.primaryModel = _primaryModel;
-        engine.secondaryModels = _secondaryModels;
-        engine.calibrationFrequency = _calibrationFrequency;
-        engine.lastCalibration = block.timestamp;
-        engine.isActive = true;
-        
-        for (uint256 i = 0; i < _secondaryModels.length; i++) {
-            engine.modelWeights[_secondaryModels[i]] = _modelWeights[i];
-        }
-        
-        emit PricingEngineCalibrated(engineId, _primaryModel, 0);
+        emit DynamicHedgeCreated(hedgeId, _portfolio, _hedgeType);
     }
 
     /**
-     * Register as social trader
+     * Rebalance dynamic hedge
      */
-    function registerSocialTrader(
-        string calldata _username,
-        string calldata _bio,
-        uint256 _copyTradeFee,
-        SocialTradeType[] calldata _allowedTypes
+    function rebalanceDynamicHedge(uint256 _hedgeId) external nonReentrant {
+        DynamicHedge storage hedge = dynamicHedges[_hedgeId];
+        require(hedge.isActive, "Hedge not active");
+        require(
+            block.timestamp >= hedge.lastRebalance + hedge.rebalanceFrequency,
+            "Rebalance too frequent"
+        );
+        
+        // Calculate current hedge ratio (simplified)
+        uint256 newRatio = _calculateHedgeRatio(_hedgeId);
+        uint256 deviation = newRatio > hedge.targetRatio ? 
+            newRatio - hedge.targetRatio : hedge.targetRatio - newRatio;
+        
+        require(deviation >= hedge.rebalanceThreshold, "Rebalance not needed");
+        
+        uint256 rebalanceCost = deviation * hedgingFeeRate / 10000;
+        hedge.hedgingCost = hedge.hedgingCost.add(rebalanceCost);
+        hedge.currentRatio = newRatio;
+        hedge.lastRebalance = block.timestamp;
+        
+        emit HedgeRebalanced(_hedgeId, hedge.currentRatio, newRatio, rebalanceCost);
+    }
+
+    /**
+     * Create portfolio insurance
+     */
+    function createPortfolioInsurance(
+        address _portfolio,
+        PortfolioInsuranceType _insuranceType,
+        uint256 _floorValue,
+        uint256 _multiplier,
+        uint256 _duration
+    ) external payable nonReentrant {
+        uint256 premium = _floorValue * insurancePremiumRate / 10000;
+        require(msg.value >= premium, "Insufficient premium");
+        
+        uint256 insuranceId = portfolioInsuranceCounter++;
+        
+        PortfolioInsurance storage insurance = portfolioInsurances[insuranceId];
+        insurance.insuranceId = insuranceId;
+        insurance.insuredPortfolio = _portfolio;
+        insurance.insuranceType = _insuranceType;
+        insurance.floorValue = _floorValue;
+        insurance.multiplier = _multiplier;
+        insurance.premiumPaid = premium;
+        insurance.startTime = block.timestamp;
+        insurance.duration = _duration;
+        insurance.isActive = true;
+        
+        emit PortfolioInsuranceActivated(insuranceId, _portfolio, _floorValue);
+    }
+
+    /**
+     * Claim portfolio insurance
+     */
+    function claimPortfolioInsurance(uint256 _insuranceId, uint256 _currentPortfolioValue) external nonReentrant {
+        PortfolioInsurance storage insurance = portfolioInsurances[_insuranceId];
+        require(insurance.isActive, "Insurance not active");
+        require(_currentPortfolioValue < insurance.floorValue, "Portfolio above floor");
+        require(
+            block.timestamp <= insurance.startTime + insurance.duration,
+            "Insurance expired"
+        );
+        
+        uint256 claimAmount = insurance.floorValue - _currentPortfolioValue;
+        insurance.totalClaims = insurance.totalClaims.add(claimAmount);
+        
+        // Transfer claim amount (implementation depends on payment method)
+        payable(msg.sender).transfer(claimAmount);
+        
+        emit InsuranceClaimed(_insuranceId, claimAmount, _currentPortfolioValue);
+    }
+
+    /**
+     * Detect arbitrage opportunities
+     */
+    function detectArbitrageOpportunity(
+        ArbitrageType _arbType,
+        address[] calldata _assets,
+        uint256[] calldata _prices,
+        uint256 _expectedProfit,
+        uint256 _requiredCapital
     ) external {
-        require(_copyTradeFee <= 2000, "Copy trade fee too high"); // Max 20%
+        require(_assets.length == _prices.length, "Array length mismatch");
+        require(_expectedProfit > 0, "No profit opportunity");
         
-        SocialTrader storage trader = socialTraders[msg.sender];
-        trader.trader = msg.sender;
-        trader.username = _username;
-        trader.bio = _bio;
-        trader.copyTradeFee = _copyTradeFee;
-        trader.riskScore = 500; // Medium risk initially
-        trader.lastActiveTime = block.timestamp;
+        uint256 arbId = arbitrageCounter++;
         
-        for (uint256 i = 0; i < _allowedTypes.length; i++) {
-            trader.allowedTradeTypes[_allowedTypes[i]] = true;
+        ArbitrageOpportunity storage arb = arbitrageOpportunities[arbId];
+        arb.arbId = arbId;
+        arb.arbType = _arbType;
+        arb.assets = _assets;
+        arb.prices = _prices;
+        arb.expectedProfit = _expectedProfit;
+        arb.requiredCapital = _requiredCapital;
+        arb.riskScore = _calculateArbitrageRisk(_arbType, _expectedProfit, _requiredCapital);
+        arb.timeWindow = 300; // 5 minutes default
+        arb.discoveredAt = block.timestamp;
+        
+        emit ArbitrageOpportunityDetected(arbId, _arbType, _expectedProfit);
+    }
+
+    /**
+     * Execute arbitrage opportunity
+     */
+    function executeArbitrage(uint256 _arbId) external payable nonReentrant {
+        ArbitrageOpportunity storage arb = arbitrageOpportunities[_arbId];
+        require(!arb.isExecuted, "Already executed");
+        require(
+            block.timestamp <= arb.discoveredAt + arb.timeWindow,
+            "Opportunity expired"
+        );
+        require(msg.value >= arb.requiredCapital, "Insufficient capital");
+        
+        // Execute arbitrage strategy (simplified)
+        uint256 actualProfit = _executeArbitrageStrategy(_arbId);
+        
+        arb.isExecuted = true;
+        arb.executor = msg.sender;
+        arb.actualProfit = actualProfit;
+        
+        // Pay executor (after deducting platform fee)
+        uint256 platformFee = actualProfit * arbitrageFeeRate / 10000;
+        uint256 executorProfit = actualProfit.sub(platformFee);
+        
+        payable(msg.sender).transfer(executorProfit);
+        
+        emit ArbitrageExecuted(_arbId, msg.sender, actualProfit);
+    }
+
+    /**
+     * Start liquidity mining
+     */
+    function startLiquidityMining(
+        uint256 _stakedAmount,
+        uint256 _lockupPeriod,
+        LiquidityMiningTier _tier
+    ) external payable nonReentrant {
+        require(msg.value >= _stakedAmount, "Insufficient stake");
+        require(_lockupPeriod >= 86400, "Minimum 1 day lockup"); // 1 day minimum
+        
+        LiquidityMining storage mining = liquidityMining[msg.sender];
+        mining.provider = msg.sender;
+        mining.tier = _tier;
+        mining.stakedAmount = _stakedAmount;
+        mining.stakingStart = block.timestamp;
+        mining.lockupPeriod = _lockupPeriod;
+        mining.lastClaimTime = block.timestamp;
+        mining.isActive = true;
+        
+        // Set tier-based parameters
+        if (_tier == LiquidityMiningTier.BRONZE) {
+            mining.rewardRate = 1e15; // 0.001 tokens per second
+            mining.multiplier = 10000; // 1x
+        } else if (_tier == LiquidityMiningTier.SILVER) {
+            mining.rewardRate = 15e14; // 0.0015 tokens per second
+            mining.multiplier = 12000; // 1.2x
+        } else if (_tier == LiquidityMiningTier.GOLD) {
+            mining.rewardRate = 2e15; // 0.002 tokens per second
+            mining.multiplier = 15000; // 1.5x
         }
-        
-        emit SocialTraderRegistered(msg.sender, _username);
     }
 
     /**
-     * Start copy trading
+     * Claim liquidity mining rewards
      */
-    function startCopyTrading(
-        address _masterTrader,
-        SocialTradeType _tradeType,
-        uint256 _allocationPercentage,
-        uint256 _maxSlippage,
-        uint256 _maxDrawdown
+    function claimLiquidityRewards() external nonReentrant {
+        LiquidityMining storage mining = liquidityMining[msg.sender];
+        require(mining.isActive, "Mining not active");
+        
+        uint256 timeElapsed = block.timestamp.sub(mining.lastClaimTime);
+        uint256 baseRewards = timeElapsed.mul(mining.rewardRate);
+        uint256 totalRewards = baseRewards.mul(mining.multiplier).div(10000);
+        
+        mining.accumulatedRewards = mining.accumulatedRewards.add(totalRewards);
+        mining.lastClaimTime = block.timestamp;
+        
+        // Transfer rewards (implementation depends on reward token)
+        emit LiquidityMiningRewardsClaimed(msg.sender, totalRewards, mining.tier);
+    }
+
+    /**
+     * Request flash loan
+     */
+    function requestFlashLoan(
+        address _asset,
+        uint256 _amount,
+        FlashLoanType _loanType,
+        bytes calldata _executionData,
+        string calldata _strategy
     ) external nonReentrant {
-        require(_allocationPercentage <= 10000, "Allocation cannot exceed 100%");
-        require(_maxSlippage <= 1000, "Max slippage too high"); // Max 10%
-        require(socialTraders[_masterTrader].trader != address(0), "Master trader not registered");
-        require(socialTraders[_masterTrader].allowedTradeTypes[_tradeType], "Trade type not allowed");
+        require(_amount <= maxFlashLoanAmount, "Amount exceeds limit");
         
-        uint256 copyTradeId = copyTradeCounter++;
+        uint256 fee = _amount.mul(flashLoanFeeRate).div(10000);
+        uint256 loanId = flashLoanCounter++;
         
-        CopyTrade storage copyTrade = copyTrades[copyTradeId];
-        copyTrade.copyTradeId = copyTradeId;
-        copyTrade.masterTrader = _masterTrader;
-        copyTrade.copyTrader = msg.sender;
-        copyTrade.tradeType = _tradeType;
-        copyTrade.allocationPercentage = _allocationPercentage;
-        copyTrade.maxSlippage = _maxSlippage;
-        copyTrade.maxDrawdown = _maxDrawdown;
-        copyTrade.isActive = true;
-        copyTrade.startTime = block.timestamp;
+        FlashLoanRequest storage loan = flashLoanRequests[loanId];
+        loan.loanId = loanId;
+        loan.borrower = msg.sender;
+        loan.asset = _asset;
+        loan.amount = _amount;
+        loan.loanType = _loanType;
+        loan.fee = fee;
+        loan.executionData = _executionData;
+        loan.timestamp = block.timestamp;
+        loan.strategy = _strategy;
         
-        // Add follower to master trader
-        socialTraders[_masterTrader].followers = socialTraders[_masterTrader].followers.add(1);
-        socialTraders[_masterTrader].followers_map[msg.sender] = true;
+        // Execute flash loan logic
+        bool success = _executeFlashLoan(loanId);
+        require(success, "Flash loan execution failed");
         
-        emit CopyTradeStarted(copyTradeId, _masterTrader, msg.sender);
+        loan.isExecuted = true;
+        loan.isRepaid = true;
+        
+        emit FlashLoanExecuted(loanId, msg.sender, _amount, 0);
     }
 
     /**
-     * Create NFT option
+     * Create commodity option
      */
-    function createNFTOption(
-        address _nftContract,
-        uint256 _tokenId,
-        NFTOptionType _nftType,
+    function createCommodityOption(
+        CommodityType _commodity,
+        uint256 _contractSize,
         uint256 _strikePrice,
         uint256 _premium,
         uint256 _expiry,
-        bytes32 _traitHash
+        OptionType _optionType,
+        bool _physicalDelivery,
+        string calldata _deliveryLocation
     ) external payable nonReentrant {
-        require(msg.value >= nftOptionFeeRate * _premium / 10000, "Insufficient fee");
-        require(_expiry > block.timestamp, "Expiry must be in future");
+        require(msg.value >= _premium, "Insufficient premium");
+        require(_expiry > block.timestamp, "Expiry in past");
         
-        uint256 optionId = nftOptionCounter++;
+        uint256 optionId = commodityOptionCounter++;
         
-        NFTOption storage nftOption = nftOptions[optionId];
-        nftOption.id = optionId;
-        nftOption.nftContract = _nftContract;
-        nftOption.tokenId = _tokenId;
-        nftOption.nftType = _nftType;
-        nftOption.strikePrice = _strikePrice;
-        nftOption.premium = _premium;
-        nftOption.expiry = _expiry;
-        nftOption.creator = msg.sender;
-        nftOption.traitHash = _traitHash;
-        nftOption.isActive = true;
+        CommodityOption storage option = commodityOptions[optionId];
+        option.id = optionId;
+        option.commodity = _commodity;
+        option.contractSize = _contractSize;
+        option.strikePrice = _strikePrice;
+        option.premium = _premium;
+        option.expiry = _expiry;
+        option.optionType = _optionType;
+        option.creator = msg.sender;
+        option.physicalDelivery = _physicalDelivery;
+        option.deliveryLocation = _deliveryLocation;
+        option.isActive = true;
         
-        emit NFTOptionCreated(optionId, _nftContract, _tokenId);
-    }
-
-    /**
-     * Create Options AMM Pool
-     */
-    function createOptionsAMM(
-        address _asset,
-        AMMStrategy _strategy,
-        uint256 _initialLiquidity,
-        uint256 _feeRate
-    ) external payable nonReentrant {
-        require(msg.value >= _initialLiquidity, "Insufficient initial liquidity");
-        require(_feeRate <= 1000, "Fee rate too high"); // Max 10%
-        
-        uint256 poolId = ammPoolCounter++;
-        
-        OptionsAMM storage amm = optionsAMMs[poolId];
-        amm.poolId = poolId;
-        amm.asset = _asset;
-        amm.strategy = _strategy;
-        amm.totalLiquidity = _initialLiquidity;
-        amm.feeRate = _feeRate;
-        amm.isActive = true;
-        amm.minLiquidity = _initialLiquidity.div(10); // 10% of initial
-        amm.maxLiquidity = _initialLiquidity.mul(100); // 100x initial
-        amm.liquidityProviders[msg.sender] = _initialLiquidity;
-        
-        // Set k parameter for constant product
-        if (_strategy == AMMStrategy.CONSTANT_PRODUCT) {
-            amm.k = _initialLiquidity.mul(_initialLiquidity);
+        // Set commodity-specific parameters
+        if (_commodity == CommodityType.GOLD) {
+            option.storageFeesPerDay = _premium.mul(5).div(36500); // 0.05% annually
+            option.qualityGrade = 9999; // 99.99% purity
+        } else if (_commodity == CommodityType.OIL) {
+            option.storageFeesPerDay = _premium.mul(10).div(36500); // 0.1% annually
+            option.qualityGrade = 40; // API gravity
         }
         
-        emit AMMPoolCreated(poolId, _asset, _strategy);
+        emit CommodityOptionCreated(optionId, _commodity, _physicalDelivery);
     }
 
     /**
-     * Setup advanced risk management
+     * Create economic derivative
      */
-    function setupRiskManager(
-        RiskLevel _maxRiskLevel,
-        uint256 _maxPositionSize,
-        uint256 _maxDailyLoss,
-        uint256 _maxPortfolioConcentration,
-        uint256 _varLimit,
-        bool _autoLiquidationEnabled
-    ) external {
-        RiskManager storage riskMgr = riskManagers[msg.sender];
-        riskMgr.user = msg.sender;
-        riskMgr.maxRiskLevel = _maxRiskLevel;
-        riskMgr.maxPositionSize = _maxPositionSize;
-        riskMgr.maxDailyLoss = _maxDailyLoss;
-        riskMgr.maxPortfolioConcentration = _maxPortfolioConcentration;
-        riskMgr.varLimit = _varLimit;
-        riskMgr.autoLiquidationEnabled = _autoLiquidationEnabled;
-        riskMgr.marginCallThreshold = 12000; // 120%
-        riskMgr.lastRiskAssessment = block.timestamp;
-        riskMgr.creditRating = CreditRating.BBB; // Default rating
-    }
-
-    /**
-     * Register as market maker
-     */
-    function registerMarketMaker(
-        mapping(address => uint256) calldata _quotedSpreads,
-        mapping(address => uint256) calldata _inventoryLimits,
-        uint256 _minQuoteSize,
-        uint256 _maxQuoteSize
-    ) external {
-        MarketMaker storage maker = marketMakers[msg.sender];
-        maker.maker = msg.sender;
-        maker.makerId = uint256(uint160(msg.sender)); // Use address as ID
-        maker.isActive = true;
-        maker.minQuoteSize = _minQuoteSize;
-        maker.maxQuoteSize = _maxQuoteSize;
-        maker.quotingFrequency = 300; // 5 minutes default
-    }
-
-    /**
-     * Submit market maker quote
-     */
-    function submitMarketMakerQuote(
-        address _asset,
-        uint256 _bidPrice,
-        uint256 _askPrice,
-        uint256 _size
-    ) external {
-        MarketMaker storage maker = marketMakers[msg.sender];
-        require(maker.isActive, "Market maker not active");
-        require(_size >= maker.minQuoteSize && _size <= maker.maxQuoteSize, "Invalid quote size");
-        require(_askPrice > _bidPrice, "Invalid spread");
+    function createEconomicDerivative(
+        EconomicIndicator _indicator,
+        uint256 _strikeValue,
+        uint256 _premium,
+        uint256 _expiry,
+        OptionType _optionType,
+        string calldata _dataSource
+    ) external payable nonReentrant {
+        require(msg.value >= _premium, "Insufficient premium");
+        require(_expiry > block.timestamp, "Expiry in past");
         
-        maker.totalQuotes = maker.totalQuotes.add(1);
-        maker.quotedSpreads[_asset] = _askPrice.sub(_bidPrice);
+        uint256 derivativeId = economicDerivativeCounter++;
         
-        emit MarketMakerQuote(msg.sender, _asset, _bidPrice, _askPrice);
+        EconomicDerivative storage derivative = economicDerivatives[derivativeId];
+        derivative.id = derivativeId;
+        derivative.indicator = _indicator;
+        derivative.strikeValue = _strikeValue;
+        derivative.premium = _premium;
+        derivative.expiry = _expiry;
+        derivative.optionType = _optionType;
+        derivative.creator = msg.sender;
+        derivative.dataSource = _dataSource;
+        derivative.settlementDelay = 5; // 5 days after expiry
+        
+        emit EconomicDataSettlement(derivativeId, _indicator, 0);
     }
 
     /**
-     * Setup compliance module
+     * Create basket option
      */
-    function setupCompliance(
-        ComplianceFramework _framework,
-        string[] calldata _requiredDocuments
-    ) external {
-        ComplianceModule storage compliance = complianceModules[msg.sender];
-        compliance.entity = msg.sender;
-        compliance.framework = _framework;
-        compliance.lastAudit = block.timestamp;
-        compliance.complianceScore = 750; // Default score
-        compliance.reportingFrequency = 2592000; // 30 days
-        
-        for (uint256 i = 0; i < _requiredDocuments.length; i++) {
-            compliance.requiredDocuments[_requiredDocuments[i]] = true;
-        }
-    }
-
-    /**
-     * Create exotic option with complex payoff
-     */
-    function createExoticOption(
-        string calldata _productName,
-        OptionsStrategy _strategy,
+    function createBasketOption(
         address[] calldata _underlyingAssets,
         uint256[] calldata _weights,
-        uint256[] calldata _strikes,
-        uint256[] calldata _expiries,
+        uint256 _strikePrice,
         uint256 _premium,
-        bytes32 _payoffFormula
+        uint256 _expiry,
+        OptionType _optionType
     ) external payable nonReentrant {
         require(_underlyingAssets.length == _weights.length, "Array length mismatch");
         require(msg.value >= _premium, "Insufficient premium");
         
-        uint256 optionId = exoticOptionCounter++;
+        // Verify weights sum to 100%
+        uint256 totalWeight = 0;
+        for (uint256 i = 0; i < _weights.length; i++) {
+            totalWeight = totalWeight.add(_weights[i]);
+        }
+        require(totalWeight == 10000, "Weights must sum to 100%");
         
-        ExoticOption storage exotic = exoticOptions[optionId];
-        exotic.id = optionId;
-        exotic.creator = msg.sender;
-        exotic.productName = _productName;
-        exotic.strategy = _strategy;
-        exotic.underlyingAssets = _underlyingAssets;
-        exotic.weights = _weights;
-        exotic.strikes = _strikes;
-        exotic.expiries = _expiries;
-        exotic.premium = _premium;
-        exotic.payoffFormula = _payoffFormula;
-        exotic.observationFrequency = 86400; // Daily observations
+        uint256 optionId = basketOptionCounter++;
         
-        emit ExoticOptionCreated(optionId, _productName, _strategy);
-    }
+        BasketOption storage option = basketOptions[optionId];
+        option.id = optionId;
+        option.underlyingAssets = _underlyingAssets;
+        option.weights = _weights;
+        option.strikePrice = _strikePrice;
+        option.premium = _premium;
+        option.expiry = _expiry;
+        option.optionType = _optionType;
+        option.creator = msg.sender;
+        option.isActive = true;
+        
+        // Store initial asset prices for basket value calculation
+        for (uint256
+   
+      
+        
+       
+        
+       
+        
+        
 
-    /**
-     * Create volatility swap
-     */
-    function createVolatilitySwap(
-        address _counterparty,
-        address _underlyingAsset,
-        uint256 _notional,
-        uint256 _strikeVolatility,
-        uint256 _startDate,
-        uint256 _endDate,
-        uint256 _cap,
-        uint256 _floor,
-        bool _isVarianceSwap
-    ) external nonReentrant {
-        require(_startDate > block.timestamp, "Start date must be in future");
-        require(_endDate > _startDate, "End date must be after start date");
-        require(_cap > _strikeVolatility && _strikeVolatility > _floor, "Invalid vol levels");
+   
+    
+     
+       
         
-        uint256 swapId = volatilitySwapCounter++;
+       
         
-        VolatilitySwap storage volSwap = volatilitySwaps[swapId];
-        volSwap.swapId = swapId;
-        volSwap.payer = msg.sender;
-        volSwap.receiver = _counterparty;
-        volSwap.underlyingAsset = _underlyingAsset;
-        volSwap.notional = _notional;
-        volSwap.strikeVolatility = _strikeVolatility;
-        volSwap.startDate = _startDate;
-        volSwap.endDate = _endDate;
-        volSwap.cap = _cap;
-        volSwap.floor = _floor;
-        volSwap.isVarianceSwap = _isVarianceSwap;
-        volSwap.observationFrequency = 86400; // Daily observations
-    }
-
-    /**
-     * Create automated trading bot
-     */
-    function createTradingBot(
-        string calldata _strategyName,
-        bytes32 _strategyHash,
-        uint256 _allocatedCapital,
-        uint256 _executionFrequency,
-        address[] calldata _allowedAssets,
-        uint256 _riskBudget,
-        LeverageType _leverageType,
-        uint256 _maxLeverage
-    ) external payable nonReentrant {
-        require(msg.value >= _allocatedCapital, "Insufficient capital");
-        require(_maxLeverage <= maxLeverage, "Leverage too high");
+       
+       
         
-        uint256 botId = tradingBotCounter++;
+       
         
-        TradingBot storage bot = tradingBots[botId];
-        bot.botId = botId;
-        bot.owner = msg.sender;
-        bot.strategyName = _strategyName;
-        bot.strategyHash = _strategyHash;
-        bot.allocatedCapital = _allocatedCapital;
-        bot.executionFrequency = _executionFrequency;
-        bot.riskBudget = _riskBudget;
-        bot.leverageType = _lever
+        
